@@ -1,0 +1,56 @@
+version: '3'
+services:
+  web:
+    build:
+      context: .
+      target: build_as_root
+      dockerfile: Dockerfile.dev
+    environment:
+      PGHOST: ${PGHOST-db}
+      PGPASSWORD: ${PGPASSWORD-postgres}
+    links:
+      - db
+    ports:
+      - 4000:4000
+    volumes:
+      - .:/work
+    working_dir: /work
+    command: "elixir --sname unifield@web --cookie unifield -S mix phx.server"
+  db:
+    image: postgres:15.2
+    environment:
+      POSTGRES_PASSWORD: ${PGPASSWORD-postgres}
+    ports:
+      - 5432:5432
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+  # livebook:
+  #   image: ghcr.io/livebook-dev/livebook:0.9.3
+  #   environment:
+  #     - LIVEBOOK_COOKIE=unifield
+  #     - LIVEBOOK_DEFAULT_RUNTIME=attached:unifield@web:unifield
+  #     - LIVEBOOK_TOKEN_ENABLED=false
+  #     - LIVEBOOK_HOME=/data
+  #   links:
+  #     - web
+  #   ports:
+  #     - 8080:8080
+  #   volumes:
+  #     - ./livebook:/data
+  pgadmin4:
+    image: dpage/pgadmin4
+    ports:
+        - 7777:80
+    volumes:
+        - pgadmin4data:/var/lib/pgadmin
+    environment:
+        PGADMIN_DEFAULT_EMAIL: user@example.com
+        PGADMIN_DEFAULT_PASSWORD: user@example.com
+        PGADMIN_CONFIG_SERVER_MODE: "False"
+        PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    depends_on:
+      - db
+volumes:
+  dbdata:
+  pgadmin4data:
+
