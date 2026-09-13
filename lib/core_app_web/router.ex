@@ -52,7 +52,14 @@ defmodule CoreAppWeb.Router do
         live "/:id", Show, :show
       end
 
-      # 運転者台帳・日報・点検整備・事故ヒヤリ・集計の各画面は機能実装時に追加する
+      scope "/drivers", DriverLive.Manager do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+        live "/:id", Show, :show
+      end
+
+      # 日報・点検整備・事故ヒヤリ・集計の各画面は機能実装時に追加する
     end
   end
 

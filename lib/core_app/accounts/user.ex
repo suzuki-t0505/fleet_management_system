@@ -3,6 +3,7 @@ defmodule CoreApp.Accounts.User do
   use CoreApp.Schema
   import Ecto.Changeset
 
+  alias CoreApp.Drivers.Driver
   alias CoreApp.Offices.Office
 
   @roles ~w(admin manager member)a
@@ -22,6 +23,8 @@ defmodule CoreApp.Accounts.User do
     field :locked_until, :utc_datetime
 
     belongs_to(:office, Office)
+
+    has_one(:driver, Driver)
 
     timestamps(type: :utc_datetime)
   end

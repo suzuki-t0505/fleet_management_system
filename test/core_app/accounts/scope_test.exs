@@ -22,6 +22,35 @@ defmodule CoreApp.Accounts.ScopeTest do
     end
   end
 
+  describe "for_user/1 と運転者の紐付け" do
+    test "運転者が紐付いた利用者は driver_id が入る" do
+      office = CoreApp.OfficesFixtures.office_fixture()
+      user = user_fixture(%{office_id: office.id})
+
+      driver =
+        CoreApp.DriversFixtures.driver_fixture(
+          Scope.for_user(CoreApp.AccountsFixtures.admin_fixture(%{office_id: office.id})),
+          %{"user_id" => user.id, "office_id" => office.id}
+        )
+
+      scope = user |> CoreApp.Repo.preload(:driver) |> Scope.for_user()
+
+      assert scope.driver_id == driver.id
+    end
+
+    test "運転者が紐付いていない場合は nil" do
+      user = user_fixture() |> CoreApp.Repo.preload(:driver)
+
+      assert is_nil(Scope.for_user(user).driver_id)
+    end
+
+    test "preload していない場合も nil として扱う" do
+      user = user_fixture()
+
+      assert is_nil(Scope.for_user(user).driver_id)
+    end
+  end
+
   describe "admin?/1" do
     test "管理者のみ真を返す" do
       assert Scope.admin?(Scope.for_user(admin_fixture()))

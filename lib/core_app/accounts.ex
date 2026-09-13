@@ -263,8 +263,11 @@ defmodule CoreApp.Accounts do
     {:ok, query} = UserToken.verify_session_token_query(token)
 
     case Repo.one(query) do
-      {%User{} = user, token_inserted_at} -> {Repo.preload(user, :office), token_inserted_at}
-      other -> other
+      {%User{} = user, token_inserted_at} ->
+        {Repo.preload(user, [:office, :driver]), token_inserted_at}
+
+      other ->
+        other
     end
   end
 

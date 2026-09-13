@@ -8,6 +8,7 @@
 alias CoreApp.Accounts
 alias CoreApp.Accounts.Scope
 alias CoreApp.Offices
+alias CoreApp.Drivers
 alias CoreApp.Vehicles
 alias CoreApp.Utils.ConvertDatetime
 
@@ -171,5 +172,72 @@ for attrs <- vehicles do
     IO.puts("created vehicle: #{vehicle.plate_number}")
   else
     IO.puts("skipped vehicle: #{attrs["plate_number"]}")
+  end
+end
+
+# --- 運転者 ---
+# driver@example.com のアカウントを1名に紐付け、日報の入力者と運転者の対応を確認できるようにする。
+driver_user = Accounts.get_user_by_email("driver@example.com")
+
+drivers = [
+  %{
+    "code" => "DR-001",
+    "name" => "運転 次郎",
+    "name_kana" => "うんてん じろう",
+    "employment_type" => "full_time",
+    "hired_on" => "2019-04-01",
+    "license_number" => "302011112222",
+    "license_types" => ["large", "medium", "ordinary"],
+    "license_expires_on" => Date.add(today, 420),
+    "user_id" => driver_user.id,
+    "office" => "TKY"
+  },
+  %{
+    "code" => "DR-002",
+    "name" => "配送 花子",
+    "name_kana" => "はいそう はなこ",
+    "employment_type" => "contract",
+    "hired_on" => "2023-07-16",
+    "license_number" => "302033334444",
+    "license_types" => ["medium", "ordinary"],
+    "license_expires_on" => Date.add(today, 20),
+    "office" => "TKY"
+  },
+  %{
+    "code" => "DR-003",
+    "name" => "長距離 三郎",
+    "name_kana" => "ちょうきょり さぶろう",
+    "employment_type" => "full_time",
+    "hired_on" => "2015-10-01",
+    "license_number" => "302055556666",
+    "license_types" => ["large", "towing"],
+    "license_expires_on" => Date.add(today, -8),
+    "office" => "HQ"
+  },
+  %{
+    "code" => "DR-004",
+    "name" => "退職 四郎",
+    "name_kana" => "たいしょく しろう",
+    "employment_type" => "retired",
+    "hired_on" => "2012-04-01",
+    "retired_on" => Date.add(today, -60),
+    "license_number" => "302077778888",
+    "license_types" => ["medium"],
+    "license_expires_on" => Date.add(today, 300),
+    "office" => "HQ"
+  }
+]
+
+for attrs <- drivers do
+  {office_code, attrs} = Map.pop(attrs, "office")
+
+  if Drivers.list_drivers(admin_scope, %{"q" => attrs["code"], "employment_type" => "all"}).total_entries ==
+       0 do
+    {:ok, driver} =
+      Drivers.create_driver(admin_scope, Map.put(attrs, "office_id", offices[office_code].id))
+
+    IO.puts("created driver: #{driver.code} #{driver.name}")
+  else
+    IO.puts("skipped driver: #{attrs["code"]}")
   end
 end

@@ -17,6 +17,7 @@ defmodule CoreApp.Accounts.Scope do
   """
 
   alias CoreApp.Accounts.User
+  alias CoreApp.Drivers.Driver
 
   defstruct user: nil, office_id: nil, role: nil, driver_id: nil
 
@@ -30,11 +31,16 @@ defmodule CoreApp.Accounts.Scope do
       user: user,
       office_id: user.office_id,
       role: user.role,
-      driver_id: nil
+      driver_id: driver_id(user)
     }
   end
 
   def for_user(nil), do: nil
+
+  # 運転者が紐付いていない場合と、preload していない場合はいずれも nil とする。
+  # セッション経由で取得した利用者は `:driver` を preload 済みのため値が入る。
+  defp driver_id(%User{driver: %Driver{id: id}}), do: id
+  defp driver_id(_user), do: nil
 
   @doc """
   管理者かどうかを返します。全拠点のデータとユーザー管理にアクセスできます。

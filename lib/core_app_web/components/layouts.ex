@@ -155,7 +155,7 @@ defmodule CoreAppWeb.Layouts do
     ]
 
     manager = [
-      %{label: "運転者", icon: "hero-identification", path: nil},
+      %{label: "運転者", icon: "hero-identification", path: "/management/drivers"},
       %{label: "点検整備・期限", icon: "hero-wrench-screwdriver", path: nil},
       %{label: "集計", icon: "hero-chart-bar", path: nil}
     ]
