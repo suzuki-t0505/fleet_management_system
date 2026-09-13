@@ -87,6 +87,13 @@ defmodule CoreAppWeb do
       # Core UI components
       import CoreAppWeb.CoreComponents
 
+      # 自作の共通コンポーネント（見た目の値は docs/DESIGN-notion.md に従う）
+      import CoreAppWeb.CardComponents
+      import CoreAppWeb.PaginationComponents
+      import CoreAppWeb.SearchComponents
+      import CoreAppWeb.StatusComponents
+      import CoreAppWeb.TableComponents
+
       # Common modules used in templates
       alias Phoenix.LiveView.JS
       alias CoreAppWeb.Layouts

@@ -26,6 +26,11 @@ defmodule CoreAppWeb.Router do
       on_mount: [{CoreAppWeb.UserAuth, :require_authenticated}] do
       live "/", DashboardLive.Index, :index
 
+      scope "/vehicles", VehicleLive.Member do
+        live "/", Index, :index
+        live "/:id", Show, :show
+      end
+
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
@@ -40,7 +45,14 @@ defmodule CoreAppWeb.Router do
 
     live_session :require_manager,
       on_mount: [{CoreAppWeb.UserAuth, :require_manager}] do
-      # 台帳・日報・点検整備・事故ヒヤリ・集計の各画面は機能実装時に追加する
+      scope "/vehicles", VehicleLive.Manager do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+        live "/:id", Show, :show
+      end
+
+      # 運転者台帳・日報・点検整備・事故ヒヤリ・集計の各画面は機能実装時に追加する
     end
   end
 

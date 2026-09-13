@@ -151,7 +151,7 @@ defmodule CoreAppWeb.Layouts do
       %{label: "ダッシュボード", icon: "hero-home", path: "/"},
       %{label: "運行日報", icon: "hero-document-text", path: nil},
       %{label: "事故・ヒヤリ", icon: "hero-exclamation-triangle", path: nil},
-      %{label: "車両", icon: "hero-truck", path: nil}
+      %{label: "車両", icon: "hero-truck", path: vehicles_path(scope)}
     ]
 
     manager = [
@@ -171,6 +171,11 @@ defmodule CoreAppWeb.Layouts do
       Scope.manager?(scope) -> base ++ manager
       true -> base
     end
+  end
+
+  # 運行管理者・管理者は台帳（編集可）、一般利用者は参照専用の画面へ遷移する
+  defp vehicles_path(scope) do
+    if Scope.manager?(scope), do: "/management/vehicles", else: "/vehicles"
   end
 
   defp office_name(%{user: %{office: %{name: name}}}), do: name
