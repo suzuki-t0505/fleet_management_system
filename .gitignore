@@ -23,7 +23,7 @@ erl_crash.dump
 /tmp/
 
 # Ignore package tarball (built via "mix hex.build").
-fleet_managment_system-*.tar
+core_app-*.tar
 
 # Ignore assets that are produced by build tools.
 /priv/static/assets/
@@ -35,3 +35,15 @@ fleet_managment_system-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Secrets. Never commit these.
+.env
+.env.*
+!.env.example
+*-service-account*.json
+gcp-key*.json
+
+# User uploads (development only).
+/priv/static/uploads/
+
+# Claude Code local settings (machine specific).
+.claude/settings.local.json

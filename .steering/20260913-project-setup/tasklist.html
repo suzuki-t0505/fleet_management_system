@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タスクリスト - プロジェクト初期整備</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39; --accent-purple-deep:#391c57;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:960px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 8px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  .st { display:inline-block; border-radius:9999px; padding:3px 10px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .todo { background:var(--canvas-soft); color:var(--ink-muted); border:1px solid var(--hairline); }
+  .doing { background:var(--accent-orange); color:#fff; }
+  .done { background:var(--accent-green); color:#fff; }
+  .id { font-weight:600; color:var(--ink); white-space:nowrap; }
+  .gate { background:var(--surface); border-left:3px solid var(--primary); border-radius:0 8px 8px 0; padding:12px 16px; margin:0 0 24px; font-size:15px; }
+  .progress { display:flex; gap:8px; align-items:center; margin-top:8px; font-size:14px; color:var(--ink-muted); }
+  ul { padding-left:20px; } li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260913-project-setup</div>
+<h1>タスクリスト：プロジェクト初期整備</h1>
+<p style="color:var(--ink-muted)">
+  <a href="requirements.html" style="color:var(--primary)">requirements.html</a> ／
+  <a href="design.html" style="color:var(--primary)">design.html</a>
+</p>
+<div class="progress"><strong>進捗</strong> 30 / 30 完了（2026-09-13）</div>
+
+<div class="gate">
+  <strong>各フェーズの終了時に <code>make check</code> を実行する。</strong>
+  失敗した状態で次のフェーズに進まない。
+</div>
+
+<h2>フェーズ1：既存ファイルの修正（R-7〜R-10）</h2>
+<table>
+  <thead><tr><th style="width:64px">ID</th><th style="width:110px">状態</th><th>タスク</th><th style="width:230px">完了条件</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T-1</td><td><span class="st done">完了</span></td>
+      <td><code>docker-compose.yml</code> の <code>--sname unifield@web --cookie unifield</code> を <code>core_app</code> に変更（livebook のコメント内も含む）</td>
+      <td><code>grep -r unifield</code> が 0 件</td></tr>
+    <tr><td class="id">T-2</td><td><span class="st done">完了</span></td>
+      <td><code>docker-compose.yml</code> の <code>version: '3'</code> を削除</td>
+      <td><code>make up</code> が警告なしで起動する</td></tr>
+    <tr><td class="id">T-3</td><td><span class="st done">完了</span></td>
+      <td><code>git mv test/fleet_managment_system_web test/core_app_web</code></td>
+      <td><code>mix test</code> が3ファイルとも実行される</td></tr>
+    <tr><td class="id">T-4</td><td><span class="st done">完了</span></td>
+      <td><code>.gitignore</code> 修正：<code>core_app-*.tar</code>、<code>.env</code>、<code>*-service-account*.json</code>、<code>/priv/static/uploads/</code></td>
+      <td><code>git check-ignore .env</code> が真を返す</td></tr>
+    <tr><td class="id">T-5</td><td><span class="st done">完了</span></td>
+      <td><code>CLAUDE.md</code> の技術スタック記載を実体に修正し、<code>coding-rules.md</code> / <code>DESIGN-notion.md</code> の位置づけを追記</td>
+      <td><code>architecture.md</code> 1.1 の表と一致</td></tr>
+  </tbody>
+</table>
+
+<h2>フェーズ2：品質ゲートと依存（R-1 / R-2）</h2>
+<table>
+  <thead><tr><th style="width:64px">ID</th><th style="width:110px">状態</th><th>タスク</th><th style="width:230px">完了条件</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T-6</td><td><span class="st done">完了</span></td>
+      <td><code>credo</code> を <code>mix.exs</code> に追加し、<code>mix credo.gen.config</code> で <code>.credo.exs</code> を生成</td>
+      <td><code>make mix_credo</code> が成功する</td></tr>
+    <tr><td class="id">T-7</td><td><span class="st done">完了</span></td>
+      <td>credo の指摘をすべて解消（テンプレート由来の指摘も除外せず修正）</td>
+      <td>指摘 0 件。広範に及ぶ場合は報告して判断を仰ぐ</td></tr>
+    <tr><td class="id">T-8</td><td><span class="st done">完了</span></td>
+      <td><code>oban</code> / <code>goth</code> / <code>google_api_storage</code> / <code>nimble_csv</code> を追加し <code>mix deps.get</code></td>
+      <td><code>make mix_compile</code> が成功する</td></tr>
+  </tbody>
+</table>
+
+<h2>フェーズ3：拠点（設計5章）</h2>
+<table>
+  <thead><tr><th style="width:64px">ID</th><th style="width:110px">状態</th><th>タスク</th><th style="width:230px">完了条件</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T-9</td><td><span class="st done">完了</span></td>
+      <td><code>offices</code> のマイグレーション作成（主キー <code>Ecto.ULID</code>、<code>code</code> にユニーク制約）</td>
+      <td><code>mix ecto.migrate</code> が成功する</td></tr>
+    <tr><td class="id">T-10</td><td><span class="st done">完了</span></td>
+      <td><code>Offices.Office</code> スキーマと changeset（必須：<code>code</code> / <code>name</code>）</td>
+      <td>changeset のテストが通る</td></tr>
+    <tr><td class="id">T-11</td><td><span class="st done">完了</span></td>
+      <td><code>CoreApp.Offices</code> Context（<code>list_offices/0</code> / <code>get_office!/1</code>）</td>
+      <td><code>list_offices/0</code> が <code>active</code> のみ返すテストが通る</td></tr>
+  </tbody>
+</table>
+
+<h2>フェーズ4：認証基盤（R-4）</h2>
+<table>
+  <thead><tr><th style="width:64px">ID</th><th style="width:110px">状態</th><th>タスク</th><th style="width:230px">完了条件</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T-12</td><td><span class="st done">完了</span></td>
+      <td><code>mix phx.gen.auth Accounts User users</code> を実行し、<strong>生成物の構成を確認して報告</strong>（マジックリンクの扱いを判断）</td>
+      <td>方針との差分を報告し、対応を決定</td></tr>
+    <tr><td class="id">T-13</td><td><span class="st done">完了</span></td>
+      <td>生成されたマイグレーション・スキーマの主キーを <code>Ecto.ULID</code> に揃える</td>
+      <td><code>mix ecto.migrate</code> が成功する</td></tr>
+    <tr><td class="id">T-14</td><td><span class="st done">完了</span></td>
+      <td>別マイグレーション <code>add_office_and_role_to_users</code>（<code>office_id</code> / <code>name</code> / <code>role</code> / <code>active</code> / <code>failed_attempts</code> / <code>locked_until</code>）</td>
+      <td>設計4.2 の全カラムが存在する</td></tr>
+    <tr><td class="id">T-15</td><td><span class="st done">完了</span></td>
+      <td>サインアップ（<code>/users/register</code>）のルートと画面を削除し、対応するテストも削除</td>
+      <td>未認証で <code>/users/register</code> が 404</td></tr>
+    <tr><td class="id">T-16</td><td><span class="st done">完了</span></td>
+      <td><code>Accounts.Scope</code> を拡張（<code>office_id</code> / <code>role</code> / <code>driver_id</code>、<code>admin?/1</code> / <code>manager?/1</code>）</td>
+      <td>ロール判定のテストが通る</td></tr>
+    <tr><td class="id">T-17</td><td><span class="st done">完了</span></td>
+      <td><code>UserAuth</code> に <code>ensure_manager</code> / <code>ensure_admin</code> の <code>on_mount</code> と対応する plug を実装</td>
+      <td>権限不足時に <code>/</code> へリダイレクトされる</td></tr>
+    <tr><td class="id">T-18</td><td><span class="st done">完了</span></td>
+      <td>ルーターに3つの <code>live_session</code> の枠を作る（配下はダッシュボードのみ）</td>
+      <td>plug と <code>on_mount</code> の強さが一致（<code>coding-rules.md</code> 8.3）</td></tr>
+    <tr><td class="id">T-19</td><td><span class="st done">完了</span></td>
+      <td>アカウントロック実装（10回失敗で15分）＋無効化ユーザーのログイン拒否</td>
+      <td>ロック・リセット・無効化の3テストが通る</td></tr>
+    <tr><td class="id">T-20</td><td><span class="st done">完了</span></td>
+      <td>bcrypt のコスト設定（dev/prod 12、test 1）</td>
+      <td>テストの実行時間が悪化しない</td></tr>
+  </tbody>
+</table>
+
+<h2>フェーズ5：Oban（R-3）</h2>
+<table>
+  <thead><tr><th style="width:64px">ID</th><th style="width:110px">状態</th><th>タスク</th><th style="width:230px">完了条件</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T-21</td><td><span class="st done">完了</span></td>
+      <td><code>Oban.Migration</code> を呼ぶマイグレーションを作成・実行</td>
+      <td><code>oban_jobs</code> テーブルが存在する</td></tr>
+    <tr><td class="id">T-22</td><td><span class="st done">完了</span></td>
+      <td>キュー（<code>default</code> / <code>mailers</code> / <code>alerts</code> / <code>exports</code>）と Pruner を設定。<code>crontab</code> は空。test は <code>testing: :manual</code></td>
+      <td>設計3.1 と一致</td></tr>
+    <tr><td class="id">T-23</td><td><span class="st done">完了</span></td>
+      <td><code>application.ex</code> の supervision tree に Oban を追加（Repo の後）</td>
+      <td>起動ログでキューの待機が確認できる</td></tr>
+  </tbody>
+</table>
+
+<h2>フェーズ6：UI 基盤（R-5 / R-6）</h2>
+<table>
+  <thead><tr><th style="width:64px">ID</th><th style="width:110px">状態</th><th>タスク</th><th style="width:230px">完了条件</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T-24</td><td><span class="st done">完了</span></td>
+      <td><code>app.css</code> の <code>@theme</code> にデザイントークンを定義（colors / radius / spacing / font）＋ <code>@source</code> を <code>core_app_web</code> に修正</td>
+      <td><code>DESIGN-notion.md</code> の値と全一致。<code>mix assets.build</code> が成功</td></tr>
+    <tr><td class="id">T-25</td><td><span class="st done">完了</span></td>
+      <td>タイポグラフィのユーティリティを定義（<code>text-heading-1</code> 〜 <code>text-eyebrow</code>）</td>
+      <td>クラスが実際に適用される（ビルド後のCSSに含まれる）</td></tr>
+    <tr><td class="id">T-26</td><td><span class="st done">完了</span></td>
+      <td><code>Layouts.app</code> 実装（サイドバー／ヘッダー／<code>flash_group</code>、ロール別ナビ、未実装リンクは <code>disabled</code>、モバイルで開閉）</td>
+      <td>ロール別のナビ出し分けテストが通る。375px で崩れない</td></tr>
+    <tr><td class="id">T-27</td><td><span class="st done">完了</span></td>
+      <td>ダッシュボードの枠（<code>DashboardLive.Index</code>）を作成し <code>/</code> に割り当て（中身は「準備中」で可）</td>
+      <td>ログイン後に <code>Layouts.app</code> で表示される</td></tr>
+  </tbody>
+</table>
+
+<h2>フェーズ7：仕上げ</h2>
+<table>
+  <thead><tr><th style="width:64px">ID</th><th style="width:110px">状態</th><th>タスク</th><th style="width:230px">完了条件</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T-28</td><td><span class="st done">完了</span></td>
+      <td><code>seeds.exs</code>：拠点2件＋ユーザー3件（admin/manager/member）を冪等に投入</td>
+      <td><code>make mix_reset_db</code> を2回実行してもエラーにならない</td></tr>
+    <tr><td class="id">T-29</td><td><span class="st done">完了</span></td>
+      <td>通し動作確認（C-1〜C-7）：ログイン → ダッシュボード表示 → ロール別ナビ → ログアウト</td>
+      <td>完了条件7項目すべて満たす</td></tr>
+    <tr><td class="id">T-30</td><td><span class="st done">完了</span></td>
+      <td><strong>永続ドキュメントの更新要否確認</strong>（<code>repository-structure.md</code> 7.1 の表で判定）</td>
+      <td>更新したもの／不要と判断した理由を明記</td></tr>
+  </tbody>
+</table>
+
+<h2>実装中に追加で対応した項目</h2>
+<table>
+  <thead><tr><th style="width:64px">ID</th><th style="width:110px">状態</th><th>タスク</th><th style="width:230px">理由</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T-31</td><td><span class="st done">完了</span></td>
+      <td><code>config/test.exs</code> のDB接続先を <code>PGHOST</code> 参照に修正</td>
+      <td><code>localhost</code> のままでテストが実行できなかった</td></tr>
+    <tr><td class="id">T-32</td><td><span class="st done">完了</span></td>
+      <td><code>app.css</code> の <code>@source</code> / colocated CSS の参照先を <code>core_app</code> に修正</td>
+      <td>存在しないアプリ名 <code>fleet_managment_system</code> を参照していた</td></tr>
+    <tr><td class="id">T-33</td><td><span class="st done">完了</span></td>
+      <td><code>CoreApp.Schema</code>（共通スキーママクロ）を作成</td>
+      <td><code>coding-rules.md</code> 5.1 が必須としているため</td></tr>
+    <tr><td class="id">T-34</td><td><span class="st done">完了</span></td>
+      <td><code>PageController</code> / <code>page_html</code> を削除</td>
+      <td><code>/</code> をダッシュボードに割り当てたため不要になった</td></tr>
+    <tr><td class="id">T-35</td><td><span class="st done">完了</span></td>
+      <td>モバイルのメニュー開閉をCSSのみの実装に変更</td>
+      <td><code>JS.toggle_class</code> が <code>hidden</code> クラスに効かなかった。CSSなら接続前でも動作する</td></tr>
+    <tr><td class="id">T-36</td><td><span class="st done">完了</span></td>
+      <td>daisyUI のテーマ値を DESIGN-notion のトークンに差し替え</td>
+      <td>生成されたログイン画面が daisyUI に依存しているため、見た目だけ揃えた</td></tr>
+  </tbody>
+</table>
+
+<h2>報告が必要なタイミング</h2>
+<div class="card">
+  <p>以下に該当した場合は<strong>実装を止めて報告し、判断を仰ぐ</strong>。</p>
+  <ul>
+    <li><strong>T-12</strong>：<code>phx.gen.auth</code> の生成物が設計と大きく異なる場合（マジックリンク中心の構成など）</li>
+    <li><strong>T-7</strong>：credo の指摘が広範に及び、テンプレート由来のコードを大きく書き換える必要がある場合</li>
+    <li><strong>T-13</strong>：ULID とジェネレータの <code>binary_id</code> が噛み合わず、生成物の大幅な修正が必要な場合</li>
+    <li><strong>T-25</strong>：Tailwind v4 の <code>@utility</code> がこのバージョンで使えず、代替記法が必要な場合</li>
+    <li>その他、設計書に書かれていない判断が必要になった場合</li>
+  </ul>
+</div>
+
+<p style="color:var(--ink-faint);font-size:14px">※ タスクの状態（未着手／着手中／完了）は実装の進行に合わせて更新する。</p>
+
+</main>
+</body>
+</html>

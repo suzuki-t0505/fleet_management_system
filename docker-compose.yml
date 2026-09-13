@@ -1,4 +1,3 @@
-version: '3'
 services:
   web:
     build:
@@ -15,7 +14,7 @@ services:
     volumes:
       - .:/work
     working_dir: /work
-    command: "elixir --sname unifield@web --cookie unifield -S mix phx.server"
+    command: "elixir --sname core_app@web --cookie core_app -S mix phx.server"
   db:
     image: postgres:15.2
     environment:
@@ -27,8 +26,8 @@ services:
   # livebook:
   #   image: ghcr.io/livebook-dev/livebook:0.9.3
   #   environment:
-  #     - LIVEBOOK_COOKIE=unifield
-  #     - LIVEBOOK_DEFAULT_RUNTIME=attached:unifield@web:unifield
+  #     - LIVEBOOK_COOKIE=core_app
+  #     - LIVEBOOK_DEFAULT_RUNTIME=attached:core_app@web:core_app
   #     - LIVEBOOK_TOKEN_ENABLED=false
   #     - LIVEBOOK_HOME=/data
   #   links:

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設計 - プロジェクト初期整備</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39; --accent-teal:#2a9d99;
+    --accent-orange-deep:#793400;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:960px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  h3 { font-size:20px; font-weight:600; margin:24px 0 8px; }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  pre { background:#fff; border:1px solid var(--hairline); border-radius:8px; padding:16px; overflow-x:auto; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-secondary); }
+  pre code { background:none; padding:0; }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  .warn { border-left-color:var(--accent-orange); }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:3px; border:1px solid var(--hairline); vertical-align:middle; margin-right:6px; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260913-project-setup</div>
+<h1>設計：プロジェクト初期整備</h1>
+<p style="color:var(--ink-muted)">要求内容は <a href="requirements.html" style="color:var(--primary)">requirements.html</a> を参照。本書は「どう実装するか」を定義する。</p>
+
+<h2>1. 全体方針</h2>
+<div class="card">
+  <ul>
+    <li><strong>業務機能を作らない</strong>。土台（依存・認証・レイアウト・デザイントークン）のみを用意する</li>
+    <li><strong>拠点（<code>offices</code>）だけは例外的に作る</strong>。<code>users.office_id</code> の外部キーに必要なため、テーブルと最小の Context を用意し、管理画面は作らない</li>
+    <li>各ステップの後に <code>make check</code> を実行し、常に緑の状態を保ちながら進める</li>
+    <li>ジェネレータの生成物は、<code>coding-rules.md</code> に反する部分のみ手直しする。過剰な書き換えをしない</li>
+  </ul>
+</div>
+
+<h2>2. 依存の追加（R-1 / R-2）</h2>
+<table>
+  <thead><tr><th style="width:200px">ライブラリ</th><th style="width:120px">バージョン</th><th>用途・設定</th></tr></thead>
+  <tbody>
+    <tr><td><code>credo</code></td><td><code>~> 1.7</code></td><td><code>only: [:dev, :test], runtime: false</code>。<code>mix credo.gen.config</code> で <code>.credo.exs</code> を生成し、既定のまま開始する</td></tr>
+    <tr><td><code>oban</code></td><td><code>~> 2.19</code></td><td>キュー・cron の設定は3章</td></tr>
+    <tr><td><code>bcrypt_elixir</code></td><td><code>~> 3.0</code></td><td><code>phx.gen.auth</code> が追加する。コストは <code>config/config.exs</code> で 12 に設定（test は 1）</td></tr>
+    <tr><td><code>goth</code></td><td><code>~> 1.4</code></td><td>依存追加と <code>runtime.exs</code> の設定雛形のみ。起動は本番設定が入るまで無効</td></tr>
+    <tr><td><code>google_api_storage</code></td><td><code>~> 0.44</code></td><td>依存追加のみ。<code>Utils.Gcs</code> の実装は添付ファイル機能と同時</td></tr>
+    <tr><td><code>nimble_csv</code></td><td><code>~> 1.2</code></td><td>依存追加のみ</td></tr>
+  </tbody>
+</table>
+<div class="note warn"><strong>方針</strong>：<code>goth</code> / <code>google_api_storage</code> / <code>nimble_csv</code> は「使う時になって依存追加でビルドが壊れる」ことを避けるため先に入れる。ただし<strong>起動プロセスには組み込まない</strong>（<code>goth</code> を supervision tree に入れるのは GCP の認証情報が用意できてから）。</div>
+
+<h2>3. Oban の導入（R-3）</h2>
+<h3>3.1 設定</h3>
+<pre><code># config/config.exs
+config :core_app, Oban,
+  repo: CoreApp.Repo,
+  queues: [default: 5, mailers: 3, alerts: 2, exports: 2],
+  plugins: [
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
+    {Oban.Plugins.Cron, crontab: []}   # ジョブ本体の実装時に追加する
+  ]
+
+# config/test.exs
+config :core_app, Oban, testing: :manual</code></pre>
+<h3>3.2 起動</h3>
+<pre><code># lib/core_app/application.ex
+children = [
+  CoreAppWeb.Telemetry,
+  CoreApp.Repo,
+  {DNSCluster, query: Application.get_env(:core_app, :dns_cluster_query) || :ignore},
+  {Oban, Application.fetch_env!(:core_app, Oban)},   # ← Repo の後、Endpoint の前
+  {Phoenix.PubSub, name: CoreApp.PubSub},
+  CoreAppWeb.Endpoint
+]</code></pre>
+<h3>3.3 マイグレーション</h3>
+<p><code>mix ecto.gen.migration add_oban_jobs_table</code> で <code>Oban.Migration.up/down</code> を呼ぶマイグレーションを作成する。</p>
+<div class="note">cron の <code>crontab</code> は<strong>空で開始する</strong>。期限アラートのジョブは別作業で実装するため、ここで登録するとエラーになる。</div>
+
+<h2>4. 認証基盤（R-4）</h2>
+<h3>4.1 生成</h3>
+<pre><code>docker compose run --rm web mix phx.gen.auth Accounts User users</code></pre>
+<p>生成後に <code>mix deps.get</code> と <code>mix ecto.migrate</code> を実行する。</p>
+<div class="note warn">Phoenix 1.8 の <code>phx.gen.auth</code> は既定でマジックリンクログインを含む。本システムは<strong>管理者がアカウントを発行し、パスワードでログインする</strong>方針（<code>architecture.md</code> 4.1）のため、生成後に以下を行う。
+  <ul>
+    <li>サインアップ（<code>/users/register</code>）のルートを<strong>削除する</strong></li>
+    <li>マジックリンク関連の画面・ルートの扱いは、生成物を確認してから判断する（初回パスワード設定リンクに転用できる場合は残す）</li>
+  </ul>
+</div>
+
+<h3>4.2 users テーブルへの追加カラム</h3>
+<table>
+  <thead><tr><th style="width:180px">カラム</th><th style="width:140px">型</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><code>office_id</code></td><td>ULID / FK</td><td>所属拠点。NOT NULL</td></tr>
+    <tr><td><code>name</code></td><td>string(100)</td><td>氏名。NOT NULL</td></tr>
+    <tr><td><code>role</code></td><td>string</td><td><code>admin</code> / <code>manager</code> / <code>member</code>。NOT NULL, default <code>member</code></td></tr>
+    <tr><td><code>active</code></td><td>boolean</td><td>無効化フラグ。NOT NULL, default <code>true</code></td></tr>
+    <tr><td><code>failed_attempts</code></td><td>integer</td><td>ログイン失敗回数。NOT NULL, default 0</td></tr>
+    <tr><td><code>locked_until</code></td><td>utc_datetime</td><td>ロック解除日時</td></tr>
+  </tbody>
+</table>
+<p>生成された <code>users</code> のマイグレーションを直接編集せず、<strong>別マイグレーション</strong>（<code>add_office_and_role_to_users</code>）で追加する。主キーは <code>Ecto.ULID</code> に統一する。</p>
+
+<h3>4.3 Accounts.Scope の拡張</h3>
+<pre><code># lib/core_app/accounts/scope.ex
+defstruct user: nil, office_id: nil, role: nil, driver_id: nil
+
+def for_user(%User{} = user) do
+  %__MODULE__{
+    user: user,
+    office_id: user.office_id,
+    role: String.to_existing_atom(user.role),
+    driver_id: nil          # drivers 実装時に紐付ける
+  }
+end
+
+def admin?(%__MODULE__{role: :admin}), do: true
+def admin?(_), do: false
+
+def manager?(%__MODULE__{role: role}), do: role in [:admin, :manager]</code></pre>
+<div class="note">この段階では <code>driver_id</code> は常に <code>nil</code>。<code>drivers</code> テーブルを作る作業で <code>for_user/1</code> に紐付けを追加する。</div>
+
+<h3>4.4 認可フックとルーター</h3>
+<p><code>coding-rules.md</code> 8.3 に従い、pipeline の plug と <code>on_mount</code> の強さを一致させる。</p>
+<table>
+  <thead><tr><th style="width:260px">live_session</th><th style="width:260px">on_mount</th><th>対象URL</th></tr></thead>
+  <tbody>
+    <tr><td><code>:require_authenticated_user</code></td><td><code>{UserAuth, :ensure_authenticated}</code></td><td><code>/</code>, <code>/operation_reports</code>, <code>/incidents</code>, <code>/vehicles</code></td></tr>
+    <tr><td><code>:require_manager</code></td><td><code>{UserAuth, :ensure_manager}</code></td><td><code>/management/*</code>（台帳・日報・点検・事故・集計）</td></tr>
+    <tr><td><code>:require_admin</code></td><td><code>{UserAuth, :ensure_admin}</code></td><td><code>/management/users</code>, <code>/management/offices</code>, <code>/management/audit_logs</code>, <code>/management/live_dashboard</code></td></tr>
+  </tbody>
+</table>
+<p>本作業では<strong>3つの live_session の枠とフックのみ</strong>を用意し、配下のルートはダッシュボードだけを登録する。各画面は機能実装時に追加する。</p>
+<p><code>ensure_manager</code> / <code>ensure_admin</code> は、権限不足時に <code>403</code> 相当のフラッシュを出して <code>/</code> に <code>halt</code> する。</p>
+
+<h3>4.5 アカウントロック</h3>
+<p>ログイン失敗時に <code>failed_attempts</code> を加算し、10回で <code>locked_until = now + 15分</code> を設定する。成功時は 0 にリセットする。ロック中は認証情報が正しくてもログインさせない。</p>
+
+<h2>5. 拠点の最小実装（R-4 の前提）</h2>
+<div class="card">
+  <p><code>offices</code> テーブルと <code>CoreApp.Offices</code> Context を作る。定義は <code>functional-design.md</code> 4.3 のとおり（<code>code</code> / <code>name</code> / <code>postal_code</code> / <code>address</code> / <code>phone</code> / <code>active</code>）。</p>
+  <p>本作業で用意する関数は <code>list_offices/0</code> と <code>get_office!/1</code> のみ。<strong>管理画面（<code>/management/offices</code>）は作らない</strong>。</p>
+  <p class="note">この Context は全拠点を横断して参照する性質のため、<code>scope</code> を取らない例外とする（<code>development-guidelines.md</code> 6.1）。拠点の一覧はロールに関わらず選択肢として必要になるため。</p>
+</div>
+
+<h2>6. デザイントークン（R-5）</h2>
+<p><code>assets/css/app.css</code> に Tailwind v4 の <code>@theme</code> でトークンを定義する。<code>DESIGN-notion.md</code> の値をそのまま写す。</p>
+<pre><code>@import "tailwindcss" source(none);
+@source "../css";
+@source "../js";
+@source "../../lib/core_app_web";
+
+@theme {
+  /* colors */
+  --color-primary: #0075de;
+  --color-primary-active: #005bab;
+  --color-secondary: #213183;
+  --color-canvas: #ffffff;
+  --color-canvas-soft: #f6f5f4;
+  --color-surface: #ffffff;
+  --color-ink: #000000;
+  --color-ink-secondary: #31302e;
+  --color-ink-muted: #615d59;
+  --color-ink-faint: #a39e98;
+  --color-hairline: #e6e6e6;
+  --color-accent-sky: #62aef0;
+  --color-accent-purple: #d6b6f6;
+  --color-accent-purple-deep: #391c57;
+  --color-accent-pink: #ff64c8;
+  --color-accent-orange: #dd5b00;
+  --color-accent-orange-deep: #793400;
+  --color-accent-teal: #2a9d99;
+  --color-accent-green: #1aae39;
+  --color-accent-brown: #523410;
+
+  /* radius */
+  --radius-xs: 4px;  --radius-sm: 5px;  --radius-md: 8px;
+  --radius-lg: 12px; --radius-xl: 16px;
+
+  /* spacing（Tailwind 既定に加えて名前付きで定義） */
+  --spacing-xxs: 4px; --spacing-xs: 8px;  --spacing-sm: 12px;
+  --spacing-md: 16px; --spacing-lg: 24px; --spacing-xl: 28px; --spacing-xxl: 32px;
+
+  /* font */
+  --font-sans: Inter, "Noto Sans JP", system-ui, sans-serif;
+}</code></pre>
+<h3>6.1 タイポグラフィ</h3>
+<p><code>DESIGN-notion.md</code> の <code>typography</code>（<code>display-1</code> 〜 <code>eyebrow</code>）は、サイズ・太さ・行間・字間の4値を持つため <code>@theme</code> 変数では表現しきれない。<strong>ユーティリティクラスとして <code>@utility</code> で定義</strong>する。</p>
+<pre><code>@utility text-heading-1 { font-size:40px; font-weight:700; line-height:1.1;  letter-spacing:-1px; }
+@utility text-heading-2 { font-size:26px; font-weight:700; line-height:1.23; letter-spacing:-.625px; }
+@utility text-title     { font-size:20px; font-weight:600; line-height:1.4;  letter-spacing:-.125px; }
+@utility text-body-md   { font-size:16px; font-weight:400; line-height:1.5; }
+@utility text-body-sm   { font-size:15px; font-weight:400; line-height:1.33; }
+@utility text-caption   { font-size:14px; font-weight:400; line-height:1.43; }
+@utility text-eyebrow   { font-size:12px; font-weight:600; line-height:1.33; letter-spacing:.125px; }</code></pre>
+<div class="note warn"><strong>決定</strong>：フォントファイルの self-host（Inter / Noto Sans JP の同梱）は<strong>本作業の対象外</strong>とする。<code>--font-sans</code> にファミリ名を定義し、当面は <code>system-ui</code> にフォールバックさせる。外部CDNは使わない（<code>AGENTS.md</code>）。</div>
+
+<h2>7. Layouts.app（R-6）</h2>
+<h3>7.1 構造</h3>
+<pre><code>&lt;Layouts.app flash={@flash} current_scope={@current_scope}&gt;
+  ├ サイドバー（PC: 固定240px / モバイル: ハンバーガーで開閉）
+  │   ├ プロダクト名
+  │   ├ ナビゲーション（ロールで出し分け）
+  │   └ ユーザー名・拠点名・ログアウト
+  ├ ヘッダー（ページタイトル + 右側にアクションボタンのスロット）
+  └ main（背景 canvas-soft / コンテンツ幅 max 1280px）
+      └ &lt;.flash_group /&gt;  ※ layouts.ex 内でのみ呼ぶ
+&lt;/Layouts.app&gt;</code></pre>
+<h3>7.2 ナビゲーション項目</h3>
+<table>
+  <thead><tr><th style="width:200px">項目</th><th style="width:120px">表示ロール</th><th>遷移先</th></tr></thead>
+  <tbody>
+    <tr><td>ダッシュボード</td><td>全員</td><td><code>/</code></td></tr>
+    <tr><td>運行日報</td><td>全員</td><td><code>member</code>: <code>/operation_reports</code> / それ以外: <code>/management/operation_reports</code></td></tr>
+    <tr><td>事故・ヒヤリ</td><td>全員</td><td>同上</td></tr>
+    <tr><td>車両</td><td>全員</td><td><code>member</code>: <code>/vehicles</code> / それ以外: <code>/management/vehicles</code></td></tr>
+    <tr><td>運転者</td><td>manager / admin</td><td><code>/management/drivers</code></td></tr>
+    <tr><td>点検整備・期限</td><td>manager / admin</td><td><code>/management/maintenances</code></td></tr>
+    <tr><td>集計</td><td>manager / admin</td><td><code>/management/reports</code></td></tr>
+    <tr><td>管理（ユーザー・拠点・監査ログ）</td><td>admin</td><td><code>/management/users</code> ほか</td></tr>
+  </tbody>
+</table>
+<p>本作業では<strong>ダッシュボード以外のリンクを無効（<code>disabled</code> 表示）</strong>にする。遷移先が未実装のため。機能実装のたびに有効化する。</p>
+<h3>7.3 適用するトークン</h3>
+<table>
+  <thead><tr><th style="width:220px">部位</th><th>トークン</th></tr></thead>
+  <tbody>
+    <tr><td>ページ背景</td><td><span class="swatch" style="background:#f6f5f4"></span><code>canvas-soft</code></td></tr>
+    <tr><td>サイドバー・ヘッダー背景</td><td><span class="swatch" style="background:#fff"></span><code>canvas</code> + 右/下に <code>hairline</code> 1px</td></tr>
+    <tr><td>ナビの選択中</td><td><span class="swatch" style="background:#0075de"></span><code>primary</code> をインジケータに（<code>ex-app-shell-row</code>）、角丸 <code>rounded-sm</code></td></tr>
+    <tr><td>主要ボタン</td><td><code>button-primary</code>：<code>primary</code> / 文字 <code>on-primary</code> / <code>rounded-full</code></td></tr>
+    <tr><td>副ボタン</td><td><code>button-utility</code>：<code>surface</code> / 枠 <code>hairline</code> / <code>rounded-md</code></td></tr>
+    <tr><td>フラッシュ</td><td><code>ex-toast</code>：<code>surface</code> / <code>rounded-xl</code> / <code>body-sm</code></td></tr>
+  </tbody>
+</table>
+
+<h2>8. seeds（C-2 の前提）</h2>
+<div class="card">
+  <p><code>priv/repo/seeds.exs</code> に以下を投入する。<strong>冪等</strong>にする（再実行してもエラーにしない）。</p>
+  <ul>
+    <li>拠点2件：本社（<code>HQ</code>）、東京営業所（<code>TKY</code>）</li>
+    <li>ユーザー3件：<code>admin@example.com</code>（admin / 本社）、<code>manager@example.com</code>（manager / 東京）、<code>driver@example.com</code>（member / 東京）</li>
+    <li>パスワードは全件 <code>password1234567</code>（12文字以上）。<strong>開発環境専用</strong>であることをコメントに明記する</li>
+  </ul>
+</div>
+
+<h2>9. 既存ファイルの修正（R-7〜R-10）</h2>
+<table>
+  <thead><tr><th style="width:220px">ファイル</th><th>変更内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>docker-compose.yml</code></td><td><code>--sname unifield@web --cookie unifield</code> → <code>core_app</code>。<code>version: '3'</code> の行を削除。コメントアウトされた livebook 設定の <code>unifield</code> も合わせて修正</td></tr>
+    <tr><td><code>test/fleet_managment_system_web/</code></td><td><code>test/core_app_web/</code> にリネーム（<code>git mv</code>）。3ファイルとも中身のモジュール名は <code>CoreAppWeb</code> で正しいため変更不要</td></tr>
+    <tr><td><code>.gitignore</code></td><td><code>fleet_managment_system-*.tar</code> → <code>core_app-*.tar</code>。<code>.env</code>、<code>*-service-account*.json</code>、<code>/priv/static/uploads/</code> を追加</td></tr>
+    <tr><td><code>CLAUDE.md</code></td><td>技術スタックを「Elixir 1.20.4 / Erlang 27 / Phoenix 1.8.13 / LiveView 1.2 / Tailwind CSS v4 / PostgreSQL 15 / Docker」に修正。ドキュメント一覧に <code>coding-rules.md</code> と <code>DESIGN-notion.md</code> の位置づけを追記</td></tr>
+  </tbody>
+</table>
+
+<h2>10. 実装順序</h2>
+<div class="card">
+  <p>各ステップの完了時に <code>make check</code> を実行する。</p>
+  <ol>
+    <li><strong>既存ファイルの修正</strong>（R-7〜R-10）— 影響が小さく、以降の作業の足場になる</li>
+    <li><strong>credo 導入</strong>（R-1）— ここで品質ゲートが有効になる</li>
+    <li><strong>依存追加</strong>（R-2）— ビルドが通ることだけを確認</li>
+    <li><strong>拠点テーブル</strong>（5章）— 認証の前提</li>
+    <li><strong>認証基盤</strong>（R-4）— 生成 → カラム追加 → Scope 拡張 → ルーター整理 → ロック実装</li>
+    <li><strong>Oban</strong>（R-3）— 認証と独立。マイグレーション → 設定 → 起動</li>
+    <li><strong>デザイントークン</strong>（R-5）</li>
+    <li><strong>Layouts.app + ダッシュボードの枠</strong>（R-6）</li>
+    <li><strong>seeds</strong> → 通しで動作確認（C-1〜C-7）</li>
+  </ol>
+</div>
+
+<h2>11. テスト方針</h2>
+<table>
+  <thead><tr><th style="width:240px">対象</th><th>テスト内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>Accounts.Scope</code></td><td>ロールごとに <code>admin?/1</code> <code>manager?/1</code> が期待どおりを返す</td></tr>
+    <tr><td>アカウントロック</td><td>10回失敗でロックされ、ロック中は正しいパスワードでもログインできない。成功時にカウントがリセットされる</td></tr>
+    <tr><td><code>UserAuth</code> の on_mount</td><td><code>member</code> が <code>:ensure_manager</code> の live_session にアクセスするとリダイレクトされる</td></tr>
+    <tr><td>無効化ユーザー</td><td><code>active = false</code> のユーザーはログインできない</td></tr>
+    <tr><td><code>Offices</code></td><td><code>list_offices/0</code> が <code>active</code> の拠点のみを返す</td></tr>
+    <tr><td>レイアウト</td><td>ロールごとにナビゲーション項目の出し分けが正しい</td></tr>
+  </tbody>
+</table>
+<p><code>phx.gen.auth</code> が生成するテストは<strong>削除せず維持する</strong>。サインアップを削除した場合は、対応するテストのみ削除する。</p>
+
+<h2>12. リスクと対応</h2>
+<table>
+  <thead><tr><th style="width:300px">リスク</th><th>対応</th></tr></thead>
+  <tbody>
+    <tr><td>Phoenix 1.8 の <code>phx.gen.auth</code> の生成物が想定と異なる（マジックリンク前提の構成）</td><td>生成直後に内容を確認し、方針との差分を報告してから手直しする。差分が大きい場合は設計を更新する</td></tr>
+    <tr><td>ULID（<code>Ecto.ULID</code>）とジェネレータの <code>binary_id</code> 設定の噛み合わせ</td><td>生成されたマイグレーション・スキーマの主キー型を <code>Ecto.ULID</code> に揃えてから <code>ecto.migrate</code> する</td></tr>
+    <tr><td>Tailwind v4 の <code>@utility</code> 記法がバージョンで異なる</td><td>ビルドが通らない場合は <code>@layer components</code> での定義に切り替える。トークン値自体は変えない</td></tr>
+    <tr><td><code>credo</code> 導入で既存コードに大量の指摘が出る</td><td>既定設定で開始し、テンプレート由来の指摘は <code>.credo.exs</code> で除外せず修正する。修正が広範に及ぶ場合のみ報告して判断を仰ぐ</td></tr>
+    <tr><td><code>make check</code> が Docker 未起動で失敗する</td><td>実行前に <code>make up</code> の状態を確認する</td></tr>
+  </tbody>
+</table>
+
+</main>
+</body>
+</html>
