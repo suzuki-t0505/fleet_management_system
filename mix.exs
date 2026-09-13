@@ -40,6 +40,7 @@ defmodule CoreApp.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:bcrypt_elixir, "~> 3.0"},
       {:phoenix, "~> 1.8.13"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
@@ -72,7 +73,13 @@ defmodule CoreApp.MixProject do
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:ecto_ulid_next, "~> 1.0.2"},
+      {:oban, "~> 2.19"},
+      {:nimble_csv, "~> 1.2"},
+      {:goth, "~> 1.4"},
+      {:google_api_storage, "~> 0.44"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 

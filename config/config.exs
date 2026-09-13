@@ -7,6 +7,19 @@
 # General application configuration
 import Config
 
+config :core_app, :scopes,
+  user: [
+    default: true,
+    module: CoreApp.Accounts.Scope,
+    assign_key: :current_scope,
+    access_path: [:user, :id],
+    schema_key: :user_id,
+    schema_type: :binary_id,
+    schema_table: :users,
+    test_data_fixture: CoreApp.AccountsFixtures,
+    test_setup_helper: :register_and_log_in_user
+  ]
+
 config :core_app,
   namespace: CoreApp,
   ecto_repos: [CoreApp.Repo],
@@ -27,6 +40,18 @@ config :core_app, CoreAppWeb.Endpoint,
 config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.
   root_tag_attribute: "phx-r"
+
+# Configure Oban
+#
+# crontab はジョブ本体の実装に合わせて追加する。
+# 期限アラート（docs/architecture.md 4.3）は別作業で登録する。
+config :core_app, Oban,
+  repo: CoreApp.Repo,
+  queues: [default: 5, mailers: 3, alerts: 2, exports: 2],
+  plugins: [
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
+    {Oban.Plugins.Cron, crontab: []}
+  ]
 
 # Configure the mailer
 #

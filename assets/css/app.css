@@ -2,58 +2,136 @@
    https://tailwindcss.com/docs/configuration */
 
 @import "tailwindcss" source(none);
-@import "phoenix-colocated/fleet_managment_system/colocated.css";
+@import "phoenix-colocated/core_app/colocated.css";
 @source "../css";
 @source "../js";
-@source "../../lib/fleet_managment_system_web";
+@source "../../lib/core_app_web";
 /* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
-@source "../../_build/dev/phoenix-colocated/fleet_managment_system/*/";
+@source "../../_build/dev/phoenix-colocated/core_app/*/";
 
 /* A Tailwind plugin that makes "hero-#{ICON}" classes available.
    The heroicons installation itself is managed by your mix.exs */
 @plugin "../vendor/heroicons";
 
-/* daisyUI Tailwind Plugin. */
-@plugin "daisyui/packages/bundle/daisyui" {
-  themes: false;
+/* ---------------------------------------------------------------------------
+   デザイントークン
+   値は docs/DESIGN-notion.md を唯一の情報源とする。ここで独自の値を決めない。
+   --------------------------------------------------------------------------- */
+@theme {
+  /* colors */
+  --color-primary: #0075de;
+  --color-primary-active: #005bab;
+  --color-secondary: #213183;
+  --color-on-primary: #ffffff;
+  --color-canvas: #ffffff;
+  --color-canvas-soft: #f6f5f4;
+  --color-surface: #ffffff;
+  --color-ink: #000000;
+  --color-ink-secondary: #31302e;
+  --color-ink-muted: #615d59;
+  --color-ink-faint: #a39e98;
+  --color-hairline: #e6e6e6;
+  --color-accent-sky: #62aef0;
+  --color-accent-purple: #d6b6f6;
+  --color-accent-purple-deep: #391c57;
+  --color-accent-pink: #ff64c8;
+  --color-accent-orange: #dd5b00;
+  --color-accent-orange-deep: #793400;
+  --color-accent-teal: #2a9d99;
+  --color-accent-green: #1aae39;
+  --color-accent-brown: #523410;
+
+  /* rounded */
+  --radius-xs: 4px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* spacing
+     DESIGN-notion.md の spacing は 4px グリッド上にあり、Tailwind 既定の
+     numeric スケール（1 = 4px）でそのまま表現できる。
+     --spacing-sm のような名前付きトークンは max-w-sm / w-md など Tailwind 組み込みの
+     サイズ名と衝突する（max-w-sm が 24rem ではなく 12px になる）ため定義しない。
+
+       xxs 4px  → 1    md 16px → 4    xxl 32px → 8
+       xs  8px  → 2    lg 24px → 6
+       sm  12px → 3    xl 28px → 7 */
+
+  /* font
+     NotionInter は使用できないため Inter を採用し、日本語は Noto Sans JP に
+     フォールバックする。フォントの self-host は別作業（docs/architecture.md 4.8）。 */
+  --font-sans: Inter, "Noto Sans JP", system-ui, sans-serif;
 }
 
-/* daisyUI theme plugin.
-  We ship with two themes, a light one inspired on Phoenix colors and a dark one inspired
-  on Elixir colors. Build your own at: https://daisyui.com/theme-generator/ */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
-  name: "dark";
-  default: false;
-  prefersdark: true;
-  color-scheme: "dark";
-  --color-base-100: oklch(30.33% 0.016 252.42);
-  --color-base-200: oklch(25.26% 0.014 253.1);
-  --color-base-300: oklch(20.15% 0.012 254.09);
-  --color-base-content: oklch(97.807% 0.029 256.847);
-  --color-primary: oklch(58% 0.233 277.117);
-  --color-primary-content: oklch(96% 0.018 272.314);
-  --color-secondary: oklch(58% 0.233 277.117);
-  --color-secondary-content: oklch(96% 0.018 272.314);
-  --color-accent: oklch(60% 0.25 292.717);
-  --color-accent-content: oklch(96% 0.016 293.756);
-  --color-neutral: oklch(37% 0.044 257.287);
-  --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
-  --color-info-content: oklch(97% 0.013 236.62);
-  --color-success: oklch(60% 0.118 184.704);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
+/* ---------------------------------------------------------------------------
+   タイポグラフィ
+   DESIGN-notion.md の typography はサイズ・太さ・行間・字間の4値を持つため、
+   @theme 変数ではなくユーティリティとして定義する。
+   --------------------------------------------------------------------------- */
+@utility text-display-1 {
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -2.125px;
+}
+@utility text-heading-1 {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+@utility text-heading-2 {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.23;
+  letter-spacing: -0.625px;
+}
+@utility text-heading-3 {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.27;
+  letter-spacing: -0.25px;
+}
+@utility text-title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.125px;
+}
+@utility text-body-md {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+@utility text-body-sm {
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.33;
+}
+@utility text-button {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+@utility text-caption {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+}
+@utility text-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.33;
+  letter-spacing: 0.125px;
+}
+
+/* daisyUI Tailwind Plugin.
+   自前のコンポーネントは Tailwind のユーティリティで実装する（AGENTS.md）。
+   daisyUI は phx.gen.auth が生成した画面が依存しているため読み込み、
+   テーマの値を DESIGN-notion.md のトークンに揃えることで見た目を統一する。 */
+@plugin "daisyui/packages/bundle/daisyui" {
+  themes: false;
 }
 
 @plugin "daisyui/packages/bundle/daisyui-theme" {
@@ -61,33 +139,33 @@
   default: true;
   prefersdark: false;
   color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(96% 0.001 286.375);
-  --color-base-300: oklch(92% 0.004 286.32);
-  --color-base-content: oklch(21% 0.006 285.885);
-  --color-primary: oklch(70% 0.213 47.604);
-  --color-primary-content: oklch(98% 0.016 73.684);
-  --color-secondary: oklch(55% 0.027 264.364);
-  --color-secondary-content: oklch(98% 0.002 247.839);
-  --color-accent: oklch(0% 0 0);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(44% 0.017 285.786);
-  --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(62% 0.214 259.815);
-  --color-info-content: oklch(97% 0.014 254.604);
-  --color-success: oklch(70% 0.14 182.503);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
+  --color-base-100: #ffffff;
+  --color-base-200: #f6f5f4;
+  --color-base-300: #e6e6e6;
+  --color-base-content: #000000;
+  --color-primary: #0075de;
+  --color-primary-content: #ffffff;
+  --color-secondary: #213183;
+  --color-secondary-content: #ffffff;
+  --color-accent: #2a9d99;
+  --color-accent-content: #ffffff;
+  --color-neutral: #31302e;
+  --color-neutral-content: #ffffff;
+  --color-info: #62aef0;
+  --color-info-content: #31302e;
+  --color-success: #1aae39;
+  --color-success-content: #ffffff;
+  --color-warning: #dd5b00;
+  --color-warning-content: #ffffff;
+  --color-error: #793400;
+  --color-error-content: #ffffff;
+  --radius-selector: 9999px;
+  --radius-field: 4px;
+  --radius-box: 12px;
   --size-selector: 0.21875rem;
   --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
+  --border: 1px;
+  --depth: 0;
   --noise: 0;
 }
 
@@ -95,9 +173,6 @@
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
-
-/* Use the data attribute for dark mode  */
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
