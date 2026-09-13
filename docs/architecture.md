@@ -199,11 +199,15 @@ Phoenix 1.8 の `current_scope` を採用し、認可の判断材料を1つの�
   user: %User{},        # ログインユーザー
   office_id: "01J...",  # 所属拠点ID
   role: :manager,       # :admin | :manager | :member
-  driver_id: "01J..."   # 紐付く運転者ID（member のとき）
+  driver_id: "01J..."   # 紐付く運転者ID（未紐付け・未preload は nil）
 }
 ```
 
 Context のクエリは `scope` に応じて条件を付与する。
+
+`driver_id` はセッション経由で取得した利用者（`:driver` を preload 済み）にのみ入る。
+preload していない `User` から `Scope.for_user/1` を呼んだ場合は `nil` になるため、
+運転者の特定が必須の処理ではセッション由来のスコープを使う。
 
 | role | 付与される条件 |
 |------|--------------|

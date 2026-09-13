@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設計 - 運転者台帳</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-orange-deep:#793400;
+    --accent-green:#1aae39; --accent-teal:#2a9d99; --accent-purple-deep:#391c57;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:980px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  h3 { font-size:20px; font-weight:600; margin:24px 0 8px; }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  pre { background:#fff; border:1px solid var(--hairline); border-radius:8px; padding:16px; overflow-x:auto; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-secondary); }
+  pre code { background:none; padding:0; }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  .warn { border-left-color:var(--accent-orange); }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260913-driver-registry</div>
+<h1>設計：運転者台帳</h1>
+<p style="color:var(--ink-muted)">要求内容は <a href="requirements.html" style="color:var(--primary)">requirements.html</a>。</p>
+
+<h2>1. 全体方針</h2>
+<div class="card">
+  <ul>
+    <li><strong>車両台帳の構成をそのまま踏襲する</strong>。Context のシグネチャ（<code>scope</code> 第1引数）、監査ログの記録方法、画面構成、共通コンポーネントの使い方を変えない</li>
+    <li><strong>2つ目の台帳として、共通化の要否を判断する</strong>。同じコードが3回目に現れたら抽象化する方針とし、今回は「重複しているが抽象化しない」判断も記録に残す</li>
+    <li><code>users</code> と <code>drivers</code> の紐付けは <strong><code>drivers.user_id</code> 側に持つ</strong>（1運転者に1アカウント。アカウントを持たない運転者が存在するため）</li>
+  </ul>
+</div>
+
+<h2>2. データモデル</h2>
+<h3>2.1 drivers</h3>
+<table>
+  <thead><tr><th style="width:220px">カラム</th><th style="width:180px">型</th><th>制約・既定</th></tr></thead>
+  <tbody>
+    <tr><td><code>office_id</code></td><td>ULID / FK</td><td>NOT NULL, IDX</td></tr>
+    <tr><td><code>user_id</code></td><td>ULID / FK</td><td>任意, <strong>UNIQUE</strong>（部分ユニークインデックス）, IDX</td></tr>
+    <tr><td><code>code</code></td><td>string(20)</td><td>NOT NULL, <strong>UNIQUE（全社）</strong></td></tr>
+    <tr><td><code>name</code> / <code>name_kana</code></td><td>string(100)</td><td>NOT NULL</td></tr>
+    <tr><td><code>employment_type</code></td><td>string</td><td>NOT NULL, IDX。<code>full_time</code>/<code>contract</code>/<code>part_time</code>/<code>other</code>/<code>retired</code></td></tr>
+    <tr><td><code>hired_on</code></td><td>date</td><td>NOT NULL</td></tr>
+    <tr><td><code>retired_on</code></td><td>date</td><td>任意</td></tr>
+    <tr><td><code>license_number</code></td><td>string(20)</td><td>NOT NULL</td></tr>
+    <tr><td><code>license_types</code></td><td>string[]</td><td>NOT NULL（1つ以上）</td></tr>
+    <tr><td><code>license_expires_on</code></td><td>date</td><td>NOT NULL, IDX</td></tr>
+    <tr><td><code>note</code></td><td>text</td><td>任意</td></tr>
+  </tbody>
+</table>
+<p>複合インデックス: <code>(office_id, employment_type)</code></p>
+
+<div class="note warn">
+  <strong>要求内容との差異</strong>：requirements.html では運転者コードを「任意項目」と書いたが、
+  <code>functional-design.md</code> 4.3 では <code>code</code> は NOT NULL かつ全社ユニークである。
+  <strong>上位ドキュメントを正とし、必須項目とする</strong>（<code>repository-structure.md</code> 11章）。
+  採番規則は運用側の既存規則に合わせる必要があるため、システムでの自動採番は行わない。
+</div>
+
+<h3>2.2 免許種類</h3>
+<p><code>{:array, Ecto.Enum}</code> で保持する。運送事業で使う区分に限定する。</p>
+<pre><code>large(大型) / medium(中型) / semi_medium(準中型) / ordinary(普通) /
+large_special(大型特殊) / towing(けん引)</code></pre>
+
+<h3>2.3 users との関連</h3>
+<pre><code># lib/core_app/accounts/user.ex
+has_one(:driver, CoreApp.Drivers.Driver)</code></pre>
+<p>
+  Context をまたぐスキーマ参照になるが、Ecto の関連定義としては通常の書き方であり、
+  <code>Accounts</code> が <code>Drivers</code> の Context 関数を呼ぶわけではないため許容する。
+</p>
+
+<h2>3. ドメイン層</h2>
+<h3>3.1 CoreApp.Drivers</h3>
+<pre><code>list_drivers(scope, params \\ %{})        # ページネーション付き一覧
+all_selectable_drivers(scope)             # 退職者を除く（日報の選択肢用）
+get_driver!(scope, id)
+create_driver(scope, attrs, opts \\ [])
+update_driver(scope, driver, attrs, opts \\ [])
+change_driver(driver, attrs \\ %{})
+all_linkable_users(scope, driver \\ nil)  # 紐付け可能なアカウント
+count_drivers_by_employment_type(scope)</code></pre>
+<p>スコープの適用・絞り込み・監査ログの記録方法は車両台帳と同一。</p>
+
+<h3>3.2 一覧の params</h3>
+<table>
+  <thead><tr><th style="width:190px">パラメータ</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>q</code></td><td>氏名・氏名かな・運転者コードの部分一致</td></tr>
+    <tr><td><code>office_id</code></td><td>拠点（管理者のみ有効）</td></tr>
+    <tr><td><code>employment_type</code></td><td>雇用区分。未指定時は<strong>退職を除外</strong>。<code>all</code> で退職を含む</td></tr>
+    <tr><td><code>page</code> / <code>page_size</code></td><td>ページネーション</td></tr>
+  </tbody>
+</table>
+<p>並び順は氏名かなの昇順。</p>
+
+<h3>3.3 紐付け可能なアカウント（R-5）</h3>
+<pre><code>def all_linkable_users(%Scope{} = scope, driver \\ nil) do
+  # 自拠点かつ有効なアカウントのうち、
+  # ・どの運転者にも紐付いていない
+  # ・または編集中の運転者自身に紐付いている
+  # ものを返す
+end</code></pre>
+<ul>
+  <li>ロールは問わない（運行管理者が運転することもあるため）</li>
+  <li>管理者が他拠点の運転者を編集する場合は、<strong>その運転者の拠点</strong>のアカウントを候補にする</li>
+</ul>
+
+<h3>3.4 Scope への driver_id 反映（R-6）</h3>
+<pre><code># lib/core_app/accounts.ex
+def get_user_by_session_token(token) do
+  ...
+  {Repo.preload(user, [:office, :driver]), token_inserted_at}
+end
+
+# lib/core_app/accounts/scope.ex
+def for_user(%User{} = user) do
+  %__MODULE__{..., driver_id: driver_id(user)}
+end
+
+defp driver_id(%User{driver: %Driver{id: id}}), do: id
+defp driver_id(_user), do: nil   # 未preload・未紐付けは nil</code></pre>
+<div class="note">
+  <code>Scope.for_user/1</code> はテストやログイン処理など preload していない User でも呼ばれるため、
+  <strong><code>Ecto.Association.NotLoaded</code> を nil として扱う</strong>。
+  日報（F-4）で確実に値が必要になる箇所では、preload 済みの経路（セッション）から取得する。
+</div>
+
+<h2>4. バリデーション</h2>
+<table>
+  <thead><tr><th style="width:70px">#</th><th>内容</th><th style="width:250px">実装</th></tr></thead>
+  <tbody>
+    <tr><td>V-6</td><td>免許証有効期限が過去日でも<strong>保存できる</strong>が、警告を表示する</td><td>changeset ではエラーにしない。フォームと詳細画面で警告バナーを出す</td></tr>
+    <tr><td>V-7</td><td>1運転者につきアカウントは1つまで</td><td>DBの部分ユニークインデックス（<code>user_id IS NOT NULL</code>）+ <code>unique_constraint</code>。候補の生成側でも除外する</td></tr>
+    <tr><td>V-8</td><td>退職者は日報の運転者選択肢から除外</td><td><code>all_selectable_drivers/1</code> で <code>employment_type != :retired</code></td></tr>
+    <tr><td>追加1</td><td>運転者コードは全社で一意</td><td><code>unique_constraint</code>。「この運転者コードは既に登録されています」</td></tr>
+    <tr><td>追加2</td><td>免許種類は1つ以上</td><td>空配列を許可しない</td></tr>
+    <tr><td>追加3</td><td>入社年月日に未来日は入力できない</td><td>changeset</td></tr>
+    <tr><td>追加4</td><td><code>retired_on</code> は <code>hired_on</code> 以降</td><td>changeset</td></tr>
+    <tr><td>追加5</td><td><code>retired_on</code> を入力する場合、雇用区分は「退職」でなければならない</td><td>changeset。区分と日付の不整合を防ぐ</td></tr>
+    <tr><td>追加6</td><td>紐付けるアカウントは運転者と同じ拠点</td><td>Context 側で候補を自拠点に限定し、changeset でも検証する</td></tr>
+  </tbody>
+</table>
+
+<h2>5. 画面</h2>
+<h3>5.1 URL とモジュール</h3>
+<table>
+  <thead><tr><th style="width:280px">URL</th><th style="width:120px">ロール</th><th>モジュール</th></tr></thead>
+  <tbody>
+    <tr><td><code>/management/drivers</code></td><td>manager / admin</td><td><code>DriverLive.Manager.Index</code></td></tr>
+    <tr><td><code>/management/drivers/new</code></td><td>manager / admin</td><td><code>DriverLive.Manager.Form</code>（<code>:new</code>）</td></tr>
+    <tr><td><code>/management/drivers/:id/edit</code></td><td>manager / admin</td><td><code>DriverLive.Manager.Form</code>（<code>:edit</code>）</td></tr>
+    <tr><td><code>/management/drivers/:id</code></td><td>manager / admin</td><td><code>DriverLive.Manager.Show</code></td></tr>
+  </tbody>
+</table>
+<p>一般利用者向けの画面は作らない（権限マトリクスで参照不可のため）。ロール別サブディレクトリは <code>manager/</code> のみとする。</p>
+
+<h3>5.2 一覧</h3>
+<ul>
+  <li>絞り込み：キーワード（氏名・かな・コード）／拠点（管理者のみ）／雇用区分／「退職者を含む」</li>
+  <li>列：運転者コード / 氏名（かな） / 拠点（管理者のみ） / 雇用区分 / 免許種類 / 免許証有効期限（残日数バッジ）</li>
+  <li>行クリックで詳細へ。モバイルはカード表示</li>
+</ul>
+
+<h3>5.3 詳細</h3>
+<ul>
+  <li>カード1：基本情報（コード・氏名・かな・拠点・雇用区分・入社/退職年月日）</li>
+  <li>カード2：免許情報（免許証番号・免許種類・有効期限＋残日数バッジ）。期限切れ・30日以内は警告文も表示</li>
+  <li>カード3：アカウント（紐付いた利用者の氏名・メール・ロール。未紐付けなら「未紐付け」）</li>
+  <li>カード4：備考 ／ カード5：履歴（枠のみ）</li>
+</ul>
+
+<h3>5.4 フォーム</h3>
+<ul>
+  <li>セクション：基本情報 / 免許情報 / アカウント / 備考</li>
+  <li>免許種類は<strong>チェックボックス群</strong>（複数選択）</li>
+  <li>アカウントはセレクト（「紐付けない」を既定）。候補は 3.3 の条件</li>
+  <li>拠点は管理者のみ変更可能</li>
+  <li>免許証有効期限が過去日・30日以内の場合、<code>phx-change</code> のタイミングで警告を表示する</li>
+</ul>
+
+<h2>6. 共通化の判断</h2>
+<div class="card">
+  <p>車両台帳と重複する要素について、今回の対応を明記する。</p>
+  <table>
+    <thead><tr><th style="width:260px">重複箇所</th><th style="width:150px">今回の対応</th><th>理由</th></tr></thead>
+    <tbody>
+      <tr><td>スコープ適用（<code>scoped/2</code>）</td><td>各 Context に複製</td><td>3行の私的関数。共通化するとクエリの起点が隠れ、追いにくくなる</td></tr>
+      <tr><td>監査ログ付きCRUD（Multi）</td><td>各 Context に複製</td><td>リソース種別と changeset の組み立てが異なる。3つ目の台帳で共通化を再検討する</td></tr>
+      <tr><td>一覧の絞り込み（<code>filter_by_office</code> ほか）</td><td>各 Context に複製</td><td>対象カラムが異なる</td></tr>
+      <tr><td>列挙の日本語ラベル</td><td><code>driver_live/labels.ex</code> を新設</td><td>リソースごとに分ける方針（<code>repository-structure.md</code> 3.2）</td></tr>
+      <tr><td>一覧・詳細・フォームのレイアウト</td><td>共通コンポーネントを再利用</td><td>すでに <code>data_table</code> 等に切り出し済み</td></tr>
+      <tr><td>LiveView の絞り込み処理（<code>handle_event("filter", ...)</code>）</td><td>複製する</td><td>対象パラメータとパスが異なる。3つ目で共通化を検討する</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h2>7. 実装順序</h2>
+<div class="card">
+  <ol>
+    <li><code>drivers</code> マイグレーション（部分ユニークインデックスを含む）</li>
+    <li><code>Driver</code> スキーマ + changeset（V-6〜V-8・追加1〜6）</li>
+    <li><code>Drivers</code> Context（スコープ・絞り込み・監査ログ・紐付け候補）＋ Context テスト</li>
+    <li><code>User</code> に <code>has_one(:driver)</code>、<code>Scope</code> に <code>driver_id</code> を反映（R-6）＋テスト</li>
+    <li><code>DriverLive.Labels</code> と 一覧 → 詳細 → フォーム</li>
+    <li>ルーター登録・ナビゲーション有効化</li>
+    <li>seeds に運転者を追加（アカウント紐付け済みの運転者を1名含める）</li>
+    <li>通し動作確認（C-1〜C-10）</li>
+    <li>永続ドキュメントの更新要否確認</li>
+  </ol>
+</div>
+
+<h2>8. テスト方針</h2>
+<table>
+  <thead><tr><th style="width:250px">対象</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><strong>スコープ境界</strong></td><td>運行管理者が他拠点の運転者を取得・更新・一覧できない。管理者はできる</td></tr>
+    <tr><td>changeset</td><td>必須・コードの一意・免許種類1つ以上・入社日の未来日・退職日と区分の整合</td></tr>
+    <tr><td>アカウント紐付け</td><td>同じアカウントを2人の運転者に紐付けられない。候補から除外される。編集時は自分の紐付けが候補に残る</td></tr>
+    <tr><td>一覧</td><td>既定で退職者を除外。キーワード（氏名・かな・コード）で絞り込める。かな昇順</td></tr>
+    <tr><td>Scope</td><td>紐付いた利用者は <code>driver_id</code> が入る。未紐付け・未preloadでは nil</td></tr>
+    <tr><td>監査ログ</td><td>作成・更新で記録される。免許証番号が変更に含まれる場合も記録される（ログ出力はしない）</td></tr>
+    <tr><td>LiveView</td><td>登録→一覧反映、編集→詳細反映、退職→一覧から除外、コード重複でエラー</td></tr>
+    <tr><td>認可</td><td>一般利用者は <code>/management/drivers</code> にアクセスできない</td></tr>
+  </tbody>
+</table>
+
+<h2>9. リスクと対応</h2>
+<table>
+  <thead><tr><th style="width:320px">リスク</th><th>対応</th></tr></thead>
+  <tbody>
+    <tr><td>部分ユニークインデックスと <code>unique_constraint</code> の噛み合わせ</td><td>マイグレーションで <code>where: "user_id IS NOT NULL"</code> を指定し、changeset で同名の制約を宣言する。テストで二重紐付けを検証する</td></tr>
+    <tr><td><code>Scope.for_user/1</code> が preload 前提になり、既存のログイン処理が壊れる</td><td><code>NotLoaded</code> を nil として扱う。既存テスト（143件）が通ることを確認する</td></tr>
+    <tr><td>運転者コードの採番規則が未確定</td><td>自動採番せず手入力とする。運用の規則が決まったら採番機能を別途検討する</td></tr>
+    <tr><td>免許種類の配列とフォームの噛み合わせ</td><td>チェックボックス群 + hidden の空値で「全解除」を表現する。テストで空配列がエラーになることを確認する</td></tr>
+    <tr><td>個人情報（免許証番号）の露出</td><td>ログに出力しない。監査ログのDB記録のみとする</td></tr>
+  </tbody>
+</table>
+
+</main>
+</body>
+</html>

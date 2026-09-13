@@ -242,7 +242,7 @@ erDiagram
 | カラム | 型 | 制約 | 説明 |
 |--------|----|------|------|
 | office_id | ULID | NN, FK, IDX | 所属拠点 |
-| user_id | ULID | FK, UQ(null可), IDX | アカウント紐付け |
+| user_id | ULID | FK, 部分UQ(`user_id IS NOT NULL`), IDX | アカウント紐付け |
 | code | string(20) | NN, UQ | 運転者コード |
 | name | string(100) | NN | 氏名 |
 | name_kana | string(100) | NN | 氏名かな |
@@ -250,7 +250,7 @@ erDiagram
 | hired_on | date | NN | 入社年月日 |
 | retired_on | date | | 退職年月日 |
 | license_number | string(20) | NN | 免許証番号 |
-| license_types | string[] | NN | 免許種類（複数） |
+| license_types | string[] | NN | 免許種類（複数）。`large`(大型) / `medium`(中型) / `semi_medium`(準中型) / `ordinary`(普通) / `large_special`(大型特殊) / `towing`(けん引) |
 | license_expires_on | date | NN, IDX | 免許証有効期限 |
 | note | text | | 備考 |
 
@@ -429,6 +429,10 @@ stateDiagram-v2
 | V-6 | `license_expires_on` は必須。過去日の登録は警告を表示（保存は可能） | 警告バナーを表示 |
 | V-7 | `user_id` は1運転者につき1アカウントまで（重複紐付け不可） | 既に紐付いたアカウントは選択肢から除外 |
 | V-8 | `employment_type = retired` の運転者は日報の運転者選択肢から除外 | 選択肢に表示しない |
+| V-8-2 | `retired_on` を入力する場合、`employment_type` は `retired` でなければならない | 保存不可。区分と日付の不整合を防ぐ |
+| V-8-3 | `retired_on` は `hired_on` 以降 | 保存不可 |
+| V-8-4 | 免許種類は1つ以上選択する | 保存不可 |
+| V-8-5 | `hired_on` に未来日は入力できない | 保存不可 |
 
 ### 6.3 運行日報（F-4）
 
