@@ -65,7 +65,7 @@ lib/core_app/
 │   ├── {entity}.ex                 # スキーマ — 単数形
 │   └── {child_entity}.ex           # 子エンティティ（専用 Context は作らない）
 │
-├── workers/                        # Oban ワーカー
+├── workers/                        # Oban ワーカー（deadline_alert_worker.ex / alert_mail_worker.ex）
 └── utils/                          # 横断ユーティリティ（状態を持たない関数モジュール）
 ```
 
@@ -81,7 +81,7 @@ lib/core_app/
 | `maintenances.ex` | `maintenances/` | `maintenance.ex` |
 | `incidents.ex` | `incidents/` | `incident.ex` |
 | `attachments.ex` | `attachments/` | `attachment.ex` |
-| `alerts.ex` | `alerts/` | `alert_notification.ex` |
+| `alerts.ex` | `alerts/` | `alert_notification.ex` / `deadline.ex`（期限の値オブジェクト） / `alert_notifier.ex`（メール組み立て） |
 | `audit_logs.ex` | `audit_logs/` | `audit_log.ex` |
 | `reports.ex` | （なし） | 集計クエリ専用。スキーマを持たない読み取り専用 Context |
 
@@ -139,9 +139,9 @@ lib/core_app_web/
 | 運行日報 | `operation_report_live/` | `member/` `manager/` |
 | 事故・ヒヤリ | `incident_live/` | `member/` `manager/` |
 | 車両 | `vehicle_live/` | `member/`（参照専用）`manager/` |
-| 運転者 | `driver_live/` | なし（管理者・運行管理者のみ） |
-| 点検整備 | `maintenance_live/` | なし |
-| 期限アラート | `alert_live/` | なし |
+| 運転者 | `driver_live/` | `manager/`（管理者・運行管理者のみ） |
+| 点検整備 | `maintenance_live/` | `manager/`（管理者・運行管理者のみ） |
+| 期限アラート | `alert_live/` | `manager/`（管理者・運行管理者のみ） |
 | 集計レポート | `report_live/` | なし |
 | 拠点 | `office_live/` | なし（管理者のみ） |
 | ユーザー | `user_live/` | なし（管理者のみ） |

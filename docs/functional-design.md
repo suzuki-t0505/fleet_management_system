@@ -120,6 +120,7 @@ URL は [coding-rules.md](coding-rules.md) 8.4 に従い、一般利用者向け
 | 日報 詳細・承認 | `/management/operation_reports/:id` | admin / manager |
 | 点検整備記録 一覧 | `/management/maintenances` | admin / manager |
 | 点検整備記録 登録・編集 | `/management/maintenances/new`, `/management/maintenances/:id/edit` | admin / manager |
+| 点検整備記録 詳細 | `/management/maintenances/:id` | admin / manager |
 | 期限アラート一覧 | `/management/alerts` | admin / manager |
 | 事故・ヒヤリ 一覧 | `/management/incidents` | admin / manager |
 | 事故・ヒヤリ 詳細・分析・承認 | `/management/incidents/:id` | admin / manager |
@@ -352,11 +353,14 @@ erDiagram
 | alert_type | string | NN | `inspection` / `liability_insurance` / `voluntary_insurance` / `periodic_3m` / `periodic_12m` / `license` |
 | deadline_on | date | NN | 期限日 |
 | notify_stage | string | NN | `d60` / `d30` / `d7` / `d0` / `overdue` |
+| notified_on | date | NN | 通知日（JST） |
 | sent_at | utc_datetime | | 送信日時 |
 | status | string | NN | `sent` / `failed` |
 | error_message | text | | 失敗理由 |
 
-ユニーク制約: `(target_type, target_id, alert_type, deadline_on, notify_stage)` — 同一段階の重複送信を防ぐ
+ユニーク制約: `(target_type, target_id, alert_type, deadline_on, notify_stage, notified_on)` — 同一段階の重複送信を防ぐ。
+`d60` 〜 `d0` は残日数がその値になる日が1日しかないため、`notified_on` を含めても「1段階＝1通」は変わらない。
+`overdue` だけは7日ごとに再送するため、通知日で行を分ける必要がある
 
 #### audit_logs（監査ログ）
 
@@ -461,6 +465,8 @@ stateDiagram-v2
 | V-21 | `category = periodic_3m` / `periodic_12m` の登録時、`next_scheduled_on` を必須とし、車両の次回点検予定日を更新する | 未入力なら保存不可 |
 | V-22 | `performed_on` は未来日を登録できない | 保存不可 |
 | V-23 | `odometer` は当該車両の `latest_odometer` を下回る場合に警告 | 警告表示（保存は続行可） |
+| V-23-2 | `next_scheduled_on` は `performed_on` 以降 | 保存不可。過去日で車両の期限を巻き戻さないため |
+| V-23-3 | 記録の拠点は**車両の配置拠点**に従う（登録者の拠点ではない） | 管理者が代理登録しても、その車両の拠点の記録として扱う。管理者以外は自拠点の車両しか選べない |
 
 ### 6.5 事故・ヒヤリ（F-6）
 
@@ -493,7 +499,7 @@ stateDiagram-v2
 
 1. 毎日 07:00 (JST) に定時実行する
 2. 対象レコードを走査し、`deadline_on - 当日` が 60 / 30 / 7 / 0 日、および負数（超過）のものを抽出
-3. `alert_notifications` に同一 `(target, alert_type, deadline_on, notify_stage)` の `status = sent` が存在する場合はスキップ
+3. 送信済みのものはスキップする。`d60` 〜 `d0` は同一 `(target, alert_type, deadline_on, notify_stage)` の `status = sent` が1件でもあれば送らない。`overdue` は直近7日以内に `sent` があれば送らない
 4. 通知先を決定する
    - 対象の所属拠点の `manager` 全員
    - 全 `admin`
@@ -502,6 +508,10 @@ stateDiagram-v2
 7. ジョブ自体が異常終了した場合は、全 `admin` にエラー通知を送る
 
 `overdue` は期限超過中の毎日ではなく、**超過後7日ごと**に通知する（通知過多を避けるため）。
+超過1日目・2日目には送らず、超過7日目・14日目…に送る。
+
+判定と送信はジョブを分ける。`DeadlineAlertWorker`（毎日07:00）は対象の抽出とエンキューだけを行い、
+`AlertMailWorker` が1アラート＝1通を送って結果を記録する。1通の失敗が他のアラートを止めない。
 
 ### 7.3 メール仕様
 
