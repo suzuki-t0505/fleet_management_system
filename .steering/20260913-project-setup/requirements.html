@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>要求内容 - プロジェクト初期整備</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39; --accent-teal:#2a9d99;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:900px; margin:0 auto; }
+  header { margin-bottom:24px; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; line-height:1.23; margin:32px 0 12px;
+       padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  h3 { font-size:20px; font-weight:600; margin:24px 0 8px; }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface);
+          border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px;
+       text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  .pill { display:inline-block; border-radius:9999px; padding:4px 10px; font-size:12px; font-weight:600; color:#fff; }
+  .p0 { background:var(--accent-orange); } .p1 { background:var(--primary); } .p2 { background:var(--ink-faint); }
+  .out { color:var(--ink-muted); }
+  ul { padding-left:20px; } li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="eyebrow">.steering / 20260913-project-setup</div>
+  <h1>要求内容：プロジェクト初期整備</h1>
+  <p class="out">機能実装に着手する前に、テンプレート由来の不整合を解消し、永続ドキュメントで決めた技術方針をリポジトリに反映する。</p>
+</header>
+
+<h2>1. 背景</h2>
+<div class="card">
+  <p>本リポジトリは <code>phx.new</code> 由来のスケルトン（<code>CoreApp</code>）のままで、ドメインコードが存在しない。
+  永続ドキュメント6点（<code>product-requirements.md</code> / <code>functional-design.md</code> / <code>architecture.md</code> /
+  <code>repository-structure.md</code> / <code>glossary.md</code> / <code>development-guidelines.md</code>）を整備した結果、
+  <strong>ドキュメントで決めた方針とリポジトリの実体に9件の乖離</strong>があることが判明した。</p>
+  <p>この状態では <code>make check</code> が通らず（<code>credo</code> 未導入）、品質ゲートを機能させられない。
+  機能実装の前に解消する。</p>
+</div>
+
+<h2>2. 目的</h2>
+<ul>
+  <li><code>make check</code> が成功する状態にし、以降のすべての作業で品質ゲートを機能させる</li>
+  <li><code>architecture.md</code> で選定した依存（Oban / 認証 / GCS / CSV）を導入し、機能実装をすぐ始められる状態にする</li>
+  <li>テンプレート由来の誤り（<code>unifield</code> 残骸・スペル誤り・非推奨記法）を除去する</li>
+  <li><code>DESIGN-notion.md</code> のデザイントークンを Tailwind に定義し、UI実装の土台を作る</li>
+</ul>
+
+<h2>3. 対象範囲</h2>
+<table>
+  <thead><tr><th style="width:48px">#</th><th style="width:120px">優先度</th><th>要求</th><th style="width:230px">対象ファイル</th></tr></thead>
+  <tbody>
+    <tr><td>R-1</td><td><span class="pill p0">P0</span></td><td><code>credo</code> を導入し <code>make mix_credo</code> / <code>make check</code> を通す</td><td><code>mix.exs</code> / <code>.credo.exs</code></td></tr>
+    <tr><td>R-2</td><td><span class="pill p0">P0</span></td><td>技術仕様書で選定した依存を追加する（<code>oban</code> / <code>bcrypt_elixir</code> / <code>goth</code> / <code>google_api_storage</code> / <code>nimble_csv</code>）</td><td><code>mix.exs</code> / <code>config/*.exs</code></td></tr>
+    <tr><td>R-3</td><td><span class="pill p0">P0</span></td><td>Oban を起動し、キュー構成と cron の枠を用意する（ジョブ本体は本作業の対象外）</td><td><code>application.ex</code> / <code>config/*.exs</code> / <code>priv/repo/migrations</code></td></tr>
+    <tr><td>R-4</td><td><span class="pill p0">P0</span></td><td><code>mix phx.gen.auth</code> で認証基盤を作り、<code>Accounts.Scope</code> を本システムの要件（拠点・ロール）に拡張する</td><td><code>lib/core_app/accounts*</code> / <code>lib/core_app_web/user_auth.ex</code> / <code>router.ex</code></td></tr>
+    <tr><td>R-5</td><td><span class="pill p0">P0</span></td><td><code>DESIGN-notion.md</code> のトークン（colors / typography / rounded / spacing）を Tailwind の <code>@theme</code> に定義する</td><td><code>assets/css/app.css</code></td></tr>
+    <tr><td>R-6</td><td><span class="pill p0">P0</span></td><td><code>Layouts.app</code> を実装する（サイドバー・ヘッダー・フラッシュ表示）</td><td><code>components/layouts.ex</code> / <code>layouts/app.html.heex</code></td></tr>
+    <tr><td>R-7</td><td><span class="pill p1">P1</span></td><td><code>docker-compose.yml</code> のノード名・Cookie を <code>unifield</code> から <code>core_app</code> に変更し、非推奨の <code>version: '3'</code> を削除する</td><td><code>docker-compose.yml</code></td></tr>
+    <tr><td>R-8</td><td><span class="pill p1">P1</span></td><td><code>test/fleet_managment_system_web/</code> を <code>test/core_app_web/</code> にリネームする</td><td><code>test/</code></td></tr>
+    <tr><td>R-9</td><td><span class="pill p1">P1</span></td><td><code>.gitignore</code> の <code>fleet_managment_system-*.tar</code> を修正し、<code>.env</code>・サービスアカウントキーの除外を追加する</td><td><code>.gitignore</code></td></tr>
+    <tr><td>R-10</td><td><span class="pill p1">P1</span></td><td><code>CLAUDE.md</code> の技術スタック記載を実体（Elixir 1.20.4 / Phoenix 1.8.13）に合わせる</td><td><code>CLAUDE.md</code></td></tr>
+  </tbody>
+</table>
+
+<h2>4. 対象外</h2>
+<div class="card">
+  <ul>
+    <li><strong>業務機能の実装</strong>（車両台帳・運転者台帳・運行日報・点検整備・事故ヒヤリ）— 次回以降の作業</li>
+    <li><strong>Oban ジョブの本体実装</strong>（期限アラートの判定・メール送信）— 起動とキュー構成の枠のみ</li>
+    <li><strong>GCS 連携の実装</strong>（<code>Utils.Gcs</code>）— 依存の追加のみ。実装は添付ファイル機能と同時に行う</li>
+    <li><strong>本番用 <code>Dockerfile</code> と CI（GitHub Actions）の作成</strong>— デプロイ準備時に別作業とする</li>
+    <li><strong>GCP インフラの構築</strong>（Cloud Run / Cloud SQL / GCS のプロビジョニング）</li>
+    <li><strong>OTPアプリ名のリネーム</strong>— <code>core_app</code> のまま使うと決定済み（<code>architecture.md</code> 8.3）</li>
+  </ul>
+</div>
+
+<h2>5. 完了条件</h2>
+<table>
+  <thead><tr><th style="width:48px">#</th><th>条件</th></tr></thead>
+  <tbody>
+    <tr><td>C-1</td><td><code>make check</code>（compile / format / credo / test）がすべて成功する</td></tr>
+    <tr><td>C-2</td><td>ログイン画面が表示され、seeds で投入した管理者アカウントでログインできる</td></tr>
+    <tr><td>C-3</td><td>ログイン後の画面が <code>Layouts.app</code> で表示され、DESIGN-notion のトークン（背景 <code>canvas-soft</code>、主要ボタン <code>primary</code>）が適用されている</td></tr>
+    <tr><td>C-4</td><td>ロール（<code>admin</code> / <code>manager</code> / <code>member</code>）と拠点を持つユーザーが作成でき、<code>Accounts.Scope</code> から参照できる</td></tr>
+    <tr><td>C-5</td><td>Oban が起動し、LiveDashboard またはログでキューの待機が確認できる</td></tr>
+    <tr><td>C-6</td><td>リポジトリ内に <code>unifield</code> / <code>fleet_managment</code>（スペル誤り）の文字列が残っていない</td></tr>
+    <tr><td>C-7</td><td><code>CLAUDE.md</code> と <code>architecture.md</code> のバージョン記載が一致している</td></tr>
+  </tbody>
+</table>
+
+<h2>6. 前提・制約</h2>
+<div class="card">
+  <ul>
+    <li>すべてのコマンドは Docker コンテナ上で実行する（<code>development-guidelines.md</code> 2.2）</li>
+    <li>コードの書き方は <code>coding-rules.md</code>、UIの見た目は <code>DESIGN-notion.md</code> に従う</li>
+    <li>GCP のサービスアカウントキーは未入手のため、<code>goth</code> は依存追加と設定の雛形までとする</li>
+    <li>メール配信サービス（SendGrid 等）は未契約のため、開発環境の <code>Swoosh.Adapters.Local</code> のままとする</li>
+  </ul>
+</div>
+
+</main>
+</body>
+</html>

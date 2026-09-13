@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設計 - 車両台帳</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-orange-deep:#793400;
+    --accent-green:#1aae39; --accent-teal:#2a9d99; --accent-purple-deep:#391c57;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:980px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  h3 { font-size:20px; font-weight:600; margin:24px 0 8px; }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  pre { background:#fff; border:1px solid var(--hairline); border-radius:8px; padding:16px; overflow-x:auto; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-secondary); }
+  pre code { background:none; padding:0; }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  .warn { border-left-color:var(--accent-orange); }
+  .badge { display:inline-block; border-radius:9999px; padding:3px 10px; font-size:12px; font-weight:600; color:#fff; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260913-vehicle-registry</div>
+<h1>設計：車両台帳</h1>
+<p style="color:var(--ink-muted)">要求内容は <a href="requirements.html" style="color:var(--primary)">requirements.html</a>。</p>
+
+<h2>1. 全体方針</h2>
+<div class="card">
+  <ul>
+    <li><strong>車両台帳を、以降の台帳画面の型（テンプレート）にする</strong>。一覧・詳細・フォームの構造と共通コンポーネントを、運転者台帳・点検整備でそのまま再利用できる形にする</li>
+    <li>拠点の絞り込みは<strong>すべてクエリ層</strong>で行う。LiveView に <code>office_id</code> の条件を書かない</li>
+    <li>他拠点のレコードは「権限エラー」ではなく<strong>存在しないもの</strong>として扱う（<code>get_vehicle!(scope, id)</code> が <code>Ecto.NoResultsError</code> → 404）。他拠点に何が存在するかを推測させないため</li>
+    <li>監査ログは車両の保存と<strong>同一トランザクション</strong>で書く</li>
+  </ul>
+</div>
+
+<h2>2. データモデル</h2>
+<h3>2.1 vehicles</h3>
+<p>定義は <code>functional-design.md</code> 4.3 のとおり。列挙は <code>Ecto.Enum</code>、DBのカラム型は <code>:string</code>。</p>
+<table>
+  <thead><tr><th style="width:250px">カラム</th><th style="width:150px">型</th><th>制約・既定</th></tr></thead>
+  <tbody>
+    <tr><td><code>office_id</code></td><td>ULID / FK</td><td>NOT NULL, IDX</td></tr>
+    <tr><td><code>plate_number</code></td><td>string(30)</td><td>NOT NULL, <strong>UNIQUE（全社）</strong></td></tr>
+    <tr><td><code>vin</code></td><td>string(30)</td><td>NOT NULL</td></tr>
+    <tr><td><code>vehicle_class</code></td><td>string</td><td>NOT NULL。<code>large</code>/<code>medium</code>/<code>semi_medium</code>/<code>ordinary</code>/<code>light</code>/<code>other</code></td></tr>
+    <tr><td><code>maker</code> / <code>model_name</code></td><td>string(50) / string(100)</td><td>NOT NULL</td></tr>
+    <tr><td><code>first_registered_on</code></td><td>date</td><td>NOT NULL</td></tr>
+    <tr><td><code>status</code></td><td>string</td><td>NOT NULL, default <code>active</code>, IDX。<code>active</code>/<code>maintenance</code>/<code>idle</code>/<code>scrapped</code></td></tr>
+    <tr><td><code>capacity_kg</code> / <code>gross_weight_kg</code> / <code>seating_capacity</code></td><td>integer</td><td>任意・0より大きい</td></tr>
+    <tr><td><code>fuel_type</code> / <code>ownership</code></td><td>string</td><td>任意</td></tr>
+    <tr><td><code>lease_expires_on</code></td><td>date</td><td>任意</td></tr>
+    <tr><td><code>inspection_expires_on</code></td><td>date</td><td>NOT NULL, IDX（車検満了日）</td></tr>
+    <tr><td><code>liability_insurance_expires_on</code></td><td>date</td><td>NOT NULL, IDX（自賠責）</td></tr>
+    <tr><td><code>voluntary_insurance_expires_on</code></td><td>date</td><td>任意, IDX（任意保険）</td></tr>
+    <tr><td><code>next_periodic_3m_on</code> / <code>next_periodic_12m_on</code></td><td>date</td><td>任意, IDX</td></tr>
+    <tr><td><code>latest_odometer</code></td><td>integer</td><td>任意。日報の承認時に更新する（本作業では表示のみ）</td></tr>
+    <tr><td><code>note</code></td><td>text</td><td>任意</td></tr>
+  </tbody>
+</table>
+<p>複合インデックス: <code>(office_id, status)</code>（一覧の既定クエリ用）</p>
+
+<h3>2.2 audit_logs</h3>
+<p><code>functional-design.md</code> 4.3 のとおり。<strong>追記専用</strong>とし、更新・削除の関数を作らない。</p>
+<pre><code>user_id / action / resource_type / resource_id / changes(jsonb) / ip_address / inserted_at</code></pre>
+<p><code>updated_at</code> は持たない（<code>timestamps(type: :utc_datetime, updated_at: false)</code>）。</p>
+
+<h2>3. ドメイン層</h2>
+<h3>3.1 CoreApp.Vehicles</h3>
+<pre><code># lib/core_app/vehicles.ex
+
+list_vehicles(scope, params \\ %{})    # ページネーション付き一覧
+get_vehicle!(scope, id)                # 無ければ Ecto.NoResultsError
+create_vehicle(scope, attrs)           # 監査ログを同一トランザクションで記録
+update_vehicle(scope, vehicle, attrs)  # 同上
+change_vehicle(vehicle, attrs \\ %{})
+count_vehicles_by_status(scope)        # ダッシュボード用（後続作業で使用）</code></pre>
+
+<h3>3.2 スコープの適用</h3>
+<pre><code>defp scoped(query, %Scope{role: :admin}), do: query
+defp scoped(query, %Scope{office_id: office_id}),
+  do: where(query, [v], v.office_id == ^office_id)</code></pre>
+<p><code>get_vehicle!/2</code> も同じ <code>scoped/2</code> を通す。これにより他拠点のIDでは <code>Ecto.NoResultsError</code> になる。</p>
+
+<h3>3.3 一覧の params</h3>
+<table>
+  <thead><tr><th style="width:170px">パラメータ</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>q</code></td><td>車両番号・車名の部分一致（<code>ILIKE</code>）</td></tr>
+    <tr><td><code>office_id</code></td><td>拠点（管理者のみ有効。運行管理者が指定しても自拠点に強制される）</td></tr>
+    <tr><td><code>status</code></td><td>ステータス。未指定時は<strong>廃車を除外</strong>。<code>all</code> で廃車を含む</td></tr>
+    <tr><td><code>vehicle_class</code></td><td>車種区分</td></tr>
+    <tr><td><code>page</code></td><td>ページ番号（1始まり）</td></tr>
+  </tbody>
+</table>
+<p>並び順は車両番号の昇順で固定する。</p>
+
+<h3>3.4 ページネーション</h3>
+<div class="note warn">
+  <code>coding-rules.md</code> 4.3 は <code>list_*</code> の戻り値を <code>%Scrivener.Page{}</code> としているが、本プロジェクトは
+  Scrivener を採用していない（<code>architecture.md</code> 4.2 で limit/offset 方式と決定）。
+  <code>CoreApp.Utils.Pagination</code> に同等の構造体を用意し、以降のすべての <code>list_*</code> で共通して使う。
+</div>
+<pre><code># lib/core_app/utils/pagination.ex
+%CoreApp.Utils.Pagination{
+  entries: [...], page_number: 1, page_size: 50, total_entries: 128, total_pages: 3
+}
+
+Pagination.paginate(query, params, repo)   # limit/offset と件数取得をまとめる</code></pre>
+
+<h3>3.5 CoreApp.AuditLogs</h3>
+<pre><code>record(scope, action, resource, opts \\ [])   # %Ecto.Changeset{} の変更差分を changes に保存
+record_multi(multi, name, scope, action, fun) # Ecto.Multi に組み込む形</code></pre>
+<ul>
+  <li><code>changes</code> には <strong>changeset の <code>changes</code></strong>（変更後の値）を保存する。更新時は変更されたキーのみが入る</li>
+  <li>パスワード等の機微情報を持つリソースは対象外（車両・運転者・拠点・ユーザー権限のみ）</li>
+  <li>IPアドレスは LiveView の <code>connect_info</code> から取得し、<code>scope</code> ではなくオプションで渡す</li>
+</ul>
+<pre><code>Ecto.Multi.new()
+|> Ecto.Multi.insert(:vehicle, Vehicle.changeset(%Vehicle{}, attrs))
+|> AuditLogs.record_multi(:audit_log, scope, :create, &amp;{"vehicle", &amp;1.vehicle})
+|> Repo.transaction()</code></pre>
+
+<h3>3.6 JSTの「今日」</h3>
+<p>期限の残日数計算に使うため、<code>CoreApp.Utils.ConvertDatetime</code> に以下を用意する（<code>development-guidelines.md</code> 6.2）。</p>
+<pre><code>today()                  # JSTの今日 (Date)
+to_jst(utc_datetime)     # 表示用の変換
+days_until(date)         # date - JSTの今日（負数は超過）</code></pre>
+
+<h2>4. 画面</h2>
+<h3>4.1 URL とモジュール</h3>
+<table>
+  <thead><tr><th style="width:270px">URL</th><th style="width:110px">ロール</th><th>モジュール</th></tr></thead>
+  <tbody>
+    <tr><td><code>/management/vehicles</code></td><td>manager / admin</td><td><code>VehicleLive.Manager.Index</code></td></tr>
+    <tr><td><code>/management/vehicles/new</code></td><td>manager / admin</td><td><code>VehicleLive.Manager.Form</code>（<code>:new</code>）</td></tr>
+    <tr><td><code>/management/vehicles/:id/edit</code></td><td>manager / admin</td><td><code>VehicleLive.Manager.Form</code>（<code>:edit</code>）</td></tr>
+    <tr><td><code>/management/vehicles/:id</code></td><td>manager / admin</td><td><code>VehicleLive.Manager.Show</code></td></tr>
+    <tr><td><code>/vehicles</code></td><td>全ロール</td><td><code>VehicleLive.Member.Index</code></td></tr>
+    <tr><td><code>/vehicles/:id</code></td><td>全ロール</td><td><code>VehicleLive.Member.Show</code></td></tr>
+  </tbody>
+</table>
+<div class="note">
+  <code>repository-structure.md</code> 3.2 はロール別サブディレクトリを <code>driver/</code> と記載しているが、ロール値は
+  <code>member</code> である（<code>glossary.md</code>：<code>driver</code> は運転者台帳のレコード、<code>member</code> はロール）。
+  <strong>ディレクトリ名は <code>member/</code> を採用</strong>し、<code>repository-structure.md</code> を修正する。
+</div>
+
+<h3>4.2 一覧画面（管理者・運行管理者）</h3>
+<ul>
+  <li>ヘッダー右に「車両を登録」ボタン（<code>button-primary</code>）</li>
+  <li>絞り込みバー：検索ボックス（車両番号・車名）／拠点セレクト（<strong>管理者のみ表示</strong>）／ステータス／車種区分／「廃車を含む」チェック</li>
+  <li>絞り込みは <code>phx-change</code> で <code>push_patch</code> し、条件をクエリパラメータに保持する</li>
+  <li>テーブル列：車両番号 / 車名（メーカー） / 車種区分 / 拠点（管理者のみ） / ステータス / 車検満了日（残日数バッジ）</li>
+  <li>行クリックで詳細へ遷移。モバイル（<code>lg</code>未満）はカード表示に切り替える</li>
+  <li>0件のときは空状態（<code>ex-empty-state-card</code>）を表示し、登録への導線を置く</li>
+</ul>
+
+<h3>4.3 詳細画面</h3>
+<ul>
+  <li>見出しに車両番号、右に「編集」ボタン</li>
+  <li>カード1：基本情報（車名・メーカー・車種区分・車台番号・初度登録年月・拠点・ステータス）</li>
+  <li>カード2：期限（車検・自賠責・任意保険・法定点検）。残日数に応じて配色する</li>
+  <li>カード3：諸元（積載量・総重量・定員・燃料・所有区分・リース満了日・最終オドメーター）</li>
+  <li>カード4：備考</li>
+  <li>履歴（運行日報・点検整備・事故ヒヤリ）は「各機能の実装後に表示されます」と明記した枠のみ</li>
+</ul>
+
+<h3>4.4 フォーム画面</h3>
+<ul>
+  <li>セクション分け：基本情報 / 期限 / 諸元 / 備考</li>
+  <li><code>phx-change="validate"</code> で即時バリデーション</li>
+  <li>拠点セレクトは<strong>管理者のみ変更可能</strong>。運行管理者は自拠点を固定表示する</li>
+  <li>編集時はステータスも変更できる（「廃車」への変更もここで行う。削除ボタンは置かない）</li>
+  <li>375px で縦1カラム、横スクロールなし</li>
+</ul>
+
+<h3>4.5 一般利用者向け画面</h3>
+<ul>
+  <li>一覧は検索と車種区分の絞り込みのみ（拠点は自拠点固定、ステータスは稼働中・整備中・休車）</li>
+  <li>詳細は基本情報と期限のみ。編集導線を一切表示しない</li>
+</ul>
+
+<h2>5. 共通コンポーネント（R-9）</h2>
+<table>
+  <thead><tr><th style="width:250px">モジュール</th><th>提供するもの</th></tr></thead>
+  <tbody>
+    <tr><td><code>TableComponents</code></td><td><code>&lt;.data_table&gt;</code>。PCはテーブル、<code>lg</code>未満はカード。ヘッダーは <code>ex-data-table-cell</code>（背景 <code>canvas-soft</code> + <code>text-eyebrow</code>）</td></tr>
+    <tr><td><code>SearchComponents</code></td><td><code>&lt;.search_bar&gt;</code>（検索ボックス + セレクト群のスロット）。<code>text-input</code> トークン準拠</td></tr>
+    <tr><td><code>PaginationComponents</code></td><td><code>&lt;.pagination&gt;</code>。前後ページと件数表示。<code>Utils.Pagination</code> 構造体を受け取る</td></tr>
+    <tr><td><code>StatusComponents</code></td><td><code>&lt;.status_badge&gt;</code> / <code>&lt;.deadline_badge&gt;</code>。配色は <code>architecture.md</code> 4.8 の対応表に従う</td></tr>
+    <tr><td><code>CardComponents</code></td><td><code>&lt;.section_card&gt;</code>（<code>feature-card</code>）、<code>&lt;.definition_list&gt;</code>（詳細画面の項目表示）、<code>&lt;.empty_state&gt;</code></td></tr>
+  </tbody>
+</table>
+
+<h3>5.1 バッジの配色</h3>
+<table>
+  <thead><tr><th style="width:200px">状態</th><th style="width:180px">表示</th><th>トークン</th></tr></thead>
+  <tbody>
+    <tr><td>稼働中</td><td><span class="badge" style="background:var(--accent-green)">稼働中</span></td><td><code>accent-green</code></td></tr>
+    <tr><td>整備中</td><td><span class="badge" style="background:var(--accent-teal)">整備中</span></td><td><code>accent-teal</code></td></tr>
+    <tr><td>休車</td><td><span class="badge" style="background:var(--ink-faint)">休車</span></td><td><code>ink-faint</code></td></tr>
+    <tr><td>廃車</td><td><span class="badge" style="background:var(--ink-secondary)">廃車</span></td><td><code>ink-secondary</code></td></tr>
+    <tr><td>期限超過</td><td><span class="badge" style="background:var(--accent-orange-deep)">超過 12日</span></td><td><code>accent-orange-deep</code></td></tr>
+    <tr><td>7日以内</td><td><span class="badge" style="background:var(--accent-orange)">あと5日</span></td><td><code>accent-orange</code></td></tr>
+    <tr><td>30日以内</td><td><span class="badge" style="background:var(--accent-purple-deep)">あと21日</span></td><td><code>accent-purple-deep</code></td></tr>
+    <tr><td>それ以外</td><td>日付のみ</td><td>バッジなし（<code>ink-secondary</code>）</td></tr>
+  </tbody>
+</table>
+
+<h2>6. バリデーション（R-2）</h2>
+<table>
+  <thead><tr><th style="width:70px">#</th><th>内容</th><th style="width:230px">実装</th></tr></thead>
+  <tbody>
+    <tr><td>V-1</td><td>車両番号は全社で一意</td><td>DBのユニーク制約 + <code>unique_constraint</code>。メッセージ「この車両番号は既に登録されています」</td></tr>
+    <tr><td>V-2</td><td>各期限日は初度登録年月以降</td><td>changeset で比較。4つの期限すべてに適用</td></tr>
+    <tr><td>V-3</td><td>廃車は選択肢から除外</td><td>他機能の実装時に <code>all_selectable_vehicles/1</code> を使う。本作業では一覧の既定除外のみ</td></tr>
+    <tr><td>V-4</td><td>物理削除しない</td><td><code>delete_vehicle</code> を実装しない。UIに削除ボタンを置かない</td></tr>
+    <tr><td>追加</td><td>初度登録年月は未来日不可、数値項目は0より大きい</td><td>changeset</td></tr>
+  </tbody>
+</table>
+
+<h2>7. 実装順序</h2>
+<div class="card">
+  <ol>
+    <li><code>Utils.ConvertDatetime</code> / <code>Utils.Pagination</code>（以降の全機能で使う土台）</li>
+    <li><code>audit_logs</code> テーブル + <code>AuditLogs</code> Context</li>
+    <li><code>vehicles</code> テーブル + <code>Vehicle</code> スキーマ + changeset（V-1〜V-2）</li>
+    <li><code>Vehicles</code> Context（スコープ・絞り込み・監査ログ付きCRUD）＋ Context テスト</li>
+    <li>共通コンポーネント（table / search / pagination / status / card）</li>
+    <li>管理者・運行管理者向け 一覧 → 詳細 → フォーム</li>
+    <li>一般利用者向け 一覧・詳細</li>
+    <li>ルーター登録とナビゲーションの有効化</li>
+    <li>seeds に車両データを追加 → 通し動作確認</li>
+    <li>永続ドキュメントの更新要否確認</li>
+  </ol>
+  <p>各ステップの完了時に <code>make check</code> を実行する。</p>
+</div>
+
+<h2>8. テスト方針</h2>
+<table>
+  <thead><tr><th style="width:240px">対象</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><strong>スコープ境界</strong></td><td>運行管理者が他拠点の車両を <code>get_vehicle!/2</code> で取得できない／一覧に出ない／更新できない。管理者は取得できる</td></tr>
+    <tr><td>changeset</td><td>V-1（一意）・V-2（期限 &gt;= 初度登録）・必須項目・数値の下限</td></tr>
+    <tr><td>一覧の絞り込み</td><td>検索・ステータス・車種区分・拠点。<strong>既定で廃車が除外される</strong>こと</td></tr>
+    <tr><td>ページネーション</td><td>51件で2ページに分かれ、<code>total_entries</code> が正しいこと</td></tr>
+    <tr><td>監査ログ</td><td>作成・更新で1件記録され、<code>changes</code> に変更後の値が入ること。失敗時は車両も記録も残らないこと</td></tr>
+    <tr><td>LiveView</td><td>登録→一覧反映、編集→詳細反映、廃車→一覧から消える、重複車両番号でエラー表示</td></tr>
+    <tr><td>認可</td><td>一般利用者が <code>/management/vehicles</code> でダッシュボードへ差し戻される。運行管理者が他拠点の詳細URLで 404</td></tr>
+    <tr><td>残日数</td><td><code>days_until/1</code> が JST 基準で計算されること（UTCとの日付境界を含む）</td></tr>
+  </tbody>
+</table>
+
+<h2>9. リスクと対応</h2>
+<table>
+  <thead><tr><th style="width:320px">リスク</th><th>対応</th></tr></thead>
+  <tbody>
+    <tr><td>他拠点データの露出</td><td>Context 関数が <code>scope</code> を必須で受け取る設計にし、境界テストを対で書く。LiveView 側で絞り込まない</td></tr>
+    <tr><td>共通コンポーネントの過剰設計</td><td>車両台帳で実際に必要なものだけを作る。2つ目の台帳（運転者）で再利用するときに汎用化する</td></tr>
+    <tr><td>監査ログの記録漏れ</td><td>Context の CRUD 内で記録し、LiveView からは呼ばない。テストで件数を検証する</td></tr>
+    <tr><td>Ecto.Enum とフォームの噛み合わせ</td><td>セレクトの選択肢は <code>Vehicle.statuses/0</code> 等のモジュール関数から生成し、画面にベタ書きしない</td></tr>
+    <tr><td>日付の1日ずれ</td><td>残日数は必ず <code>Utils.ConvertDatetime.today/0</code>（JST）を基準にする。<code>Date.utc_today/0</code> を使わない</td></tr>
+  </tbody>
+</table>
+
+</main>
+</body>
+</html>
