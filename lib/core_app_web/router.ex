@@ -72,7 +72,16 @@ defmodule CoreAppWeb.Router do
         live "/:id", Show, :show
       end
 
-      # 点検整備・事故ヒヤリ・集計の各画面は機能実装時に追加する
+      scope "/maintenances", MaintenanceLive.Manager do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+        live "/:id", Show, :show
+      end
+
+      live "/alerts", AlertLive.Manager.Index, :index
+
+      # 事故ヒヤリ・集計の各画面は機能実装時に追加する
     end
   end
 

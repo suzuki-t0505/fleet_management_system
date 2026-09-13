@@ -60,6 +60,35 @@ defmodule CoreApp.Accounts do
   """
   def get_user!(<<_::208>> = id), do: Repo.get!(User, id)
 
+  @doc """
+  期限アラートの通知先となる利用者を返します。
+
+  対象拠点の運行管理者全員と、全拠点を見る管理者全員です（functional-design 7.2 手順4）。
+  無効化された利用者は含みません。
+
+  ```elixir
+  iex> all_alert_recipients(office_id)
+  [%User{role: :manager}, %User{role: :admin}]
+  ```
+  """
+  def all_alert_recipients(<<_::208>> = office_id) do
+    User
+    |> where([u], u.active)
+    |> where([u], u.role == :admin or (u.role == :manager and u.office_id == ^office_id))
+    |> order_by([u], asc: u.email)
+    |> Repo.all()
+  end
+
+  @doc """
+  有効な管理者をすべて返します。ジョブの異常終了の通知先に使います。
+  """
+  def all_admins do
+    User
+    |> where([u], u.active and u.role == :admin)
+    |> order_by([u], asc: u.email)
+    |> Repo.all()
+  end
+
   ## User creation
 
   @doc """

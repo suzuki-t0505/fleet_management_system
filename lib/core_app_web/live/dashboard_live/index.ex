@@ -3,6 +3,7 @@ defmodule CoreAppWeb.DashboardLive.Index do
   use CoreAppWeb, :live_view
 
   alias CoreApp.Accounts.Scope
+  alias CoreApp.Alerts
   alias CoreApp.OperationReports
 
   @impl true
@@ -12,7 +13,8 @@ defmodule CoreAppWeb.DashboardLive.Index do
     {:ok,
      socket
      |> assign(page_title: "ダッシュボード")
-     |> assign(report_counts: OperationReports.count_reports_by_status(scope))}
+     |> assign(report_counts: OperationReports.count_reports_by_status(scope))
+     |> assign(deadline_counts: deadline_counts(scope))}
   end
 
   @impl true
@@ -70,9 +72,24 @@ defmodule CoreAppWeb.DashboardLive.Index do
           />
         </div>
 
+        <div :if={Scope.manager?(@current_scope)} class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <.count_card
+            label="期限超過"
+            count={@deadline_counts.overdue}
+            path={~p"/management/alerts?#{%{"within" => "overdue"}}"}
+            tone={if @deadline_counts.overdue > 0, do: "text-accent-orange-deep", else: "text-ink"}
+          />
+          <.count_card
+            label="期限30日以内"
+            count={@deadline_counts.within_30}
+            path={~p"/management/alerts?#{%{"within" => "30"}}"}
+            tone={if @deadline_counts.within_30 > 0, do: "text-accent-orange", else: "text-ink"}
+          />
+        </div>
+
         <section class="rounded-lg border border-hairline bg-canvas-soft p-8 text-center">
           <p class="text-body-md text-ink-muted">
-            期限アラート・事故ヒヤリの件数は、各機能の実装後にここへ表示されます。
+            事故・ヒヤリの件数は、機能の実装後にここへ表示されます。
           </p>
         </section>
       </div>
@@ -98,6 +115,15 @@ defmodule CoreAppWeb.DashboardLive.Index do
   end
 
   defp count(counts, status), do: Map.get(counts, status, 0)
+
+  # 一般利用者は期限の管理対象ではないため、集計そのものを行わない
+  defp deadline_counts(scope) do
+    if Scope.manager?(scope) do
+      Alerts.count_deadlines_by_urgency(scope)
+    else
+      %{overdue: 0, within_30: 0}
+    end
+  end
 
   defp role_label(:admin), do: "管理者"
   defp role_label(:manager), do: "運行管理者"

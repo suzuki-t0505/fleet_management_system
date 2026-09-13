@@ -43,14 +43,16 @@ config :phoenix_live_view,
 
 # Configure Oban
 #
-# crontab はジョブ本体の実装に合わせて追加する。
-# 期限アラート（docs/architecture.md 4.3）は別作業で登録する。
+# crontab の時刻は UTC で指定する。`0 22 * * *` は JST 07:00。
 config :core_app, Oban,
   repo: CoreApp.Repo,
   queues: [default: 5, mailers: 3, alerts: 2, exports: 2],
   plugins: [
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
-    {Oban.Plugins.Cron, crontab: []}
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"0 22 * * *", CoreApp.Workers.DeadlineAlertWorker}
+     ]}
   ]
 
 # Configure the mailer
