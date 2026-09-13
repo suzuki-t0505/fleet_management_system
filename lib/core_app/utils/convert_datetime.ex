@@ -32,6 +32,57 @@ defmodule CoreApp.Utils.ConvertDatetime do
   end
 
   @doc """
+  `datetime-local` から送られてくる日時（タイムゾーンを持たない文字列）をJSTとみなし、
+  UTCに変換します。
+
+  タイムゾーン付きの文字列（`Z` やオフセット）はそのまま返します。APIやテストから
+  UTCで渡された値を二重に変換しないためです。
+  """
+  def parse_input(nil), do: nil
+  def parse_input(""), do: ""
+
+  def parse_input(value) when is_binary(value) do
+    if timezone?(value) do
+      value
+    else
+      case NaiveDateTime.from_iso8601(pad_seconds(value)) do
+        {:ok, naive} ->
+          naive
+          |> DateTime.from_naive!("Etc/UTC")
+          |> DateTime.add(-@jst_offset_hours, :hour)
+
+        _error ->
+          value
+      end
+    end
+  end
+
+  def parse_input(value), do: value
+
+  @doc """
+  UTCの日時を、フォームの `datetime-local` に表示するためのJSTの日時文字列に変換します。
+  """
+  def to_input_value(nil), do: nil
+
+  def to_input_value(%DateTime{} = datetime) do
+    datetime
+    |> to_jst()
+    |> DateTime.to_naive()
+    |> NaiveDateTime.to_iso8601()
+    |> String.slice(0, 16)
+  end
+
+  def to_input_value(value), do: value
+
+  defp timezone?(value) do
+    String.ends_with?(value, "Z") or Regex.match?(~r/[+-]\d{2}:?\d{2}$/, value)
+  end
+
+  defp pad_seconds(value) do
+    if Regex.match?(~r/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, value), do: value <> ":00", else: value
+  end
+
+  @doc """
   指定した日付までの残日数をJST基準で返します。過去の日付は負数になります。
   """
   def days_until(nil), do: nil
