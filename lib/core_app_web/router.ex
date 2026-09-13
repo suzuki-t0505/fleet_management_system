@@ -92,7 +92,19 @@ defmodule CoreAppWeb.Router do
 
     live_session :require_admin,
       on_mount: [{CoreAppWeb.UserAuth, :require_admin}] do
-      # ユーザー・拠点・監査ログの各画面は機能実装時に追加する
+      scope "/offices", OfficeLive.Admin do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+      end
+
+      scope "/users", UserLive.Admin do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+      end
+
+      live "/audit_logs", AuditLogLive.Admin.Index, :index
     end
   end
 

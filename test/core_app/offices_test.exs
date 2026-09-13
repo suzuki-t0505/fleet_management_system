@@ -1,8 +1,10 @@
 defmodule CoreApp.OfficesTest do
   use CoreApp.DataCase, async: true
 
+  import CoreApp.AccountsFixtures
   import CoreApp.OfficesFixtures
 
+  alias CoreApp.Accounts.Scope
   alias CoreApp.Offices
   alias CoreApp.Offices.Office
 
@@ -86,6 +88,43 @@ defmodule CoreApp.OfficesTest do
 
       assert {:ok, %Office{active: false}} = Offices.update_office(office, %{"active" => false})
       assert Offices.all_offices() == []
+    end
+  end
+
+  describe "list_offices/2" do
+    setup do
+      %{admin: admin_fixture() |> Scope.for_user()}
+    end
+
+    test "有効な拠点を拠点コードの昇順で返す", %{admin: admin} do
+      office_b = office_fixture(%{"code" => "B001"})
+      office_a = office_fixture(%{"code" => "A001"})
+
+      codes = admin |> Offices.list_offices() |> Map.fetch!(:entries) |> Enum.map(& &1.code)
+
+      assert Enum.take(codes, 2) == [office_a.code, office_b.code]
+    end
+
+    test "無効な拠点は既定で含まず、指定すると絞り込める", %{admin: admin} do
+      office_fixture(%{"code" => "Z001", "name" => "休止営業所", "active" => false})
+
+      refute admin |> Offices.list_offices() |> Map.fetch!(:entries) |> Enum.any?(&(!&1.active))
+
+      assert [inactive] = Offices.list_offices(admin, %{"active" => "false"}).entries
+      assert inactive.name == "休止営業所"
+
+      assert Offices.list_offices(admin, %{"active" => "all"}).total_entries >= 2
+    end
+
+    test "拠点コード・拠点名で検索できる", %{admin: admin} do
+      office_fixture(%{"code" => "OSK", "name" => "大阪営業所"})
+      office_fixture(%{"code" => "NGY", "name" => "名古屋営業所"})
+
+      assert [found] = Offices.list_offices(admin, %{"q" => "大阪"}).entries
+      assert found.code == "OSK"
+
+      assert [found] = Offices.list_offices(admin, %{"q" => "NGY"}).entries
+      assert found.name == "名古屋営業所"
     end
   end
 end

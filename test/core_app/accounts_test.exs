@@ -4,7 +4,10 @@ defmodule CoreApp.AccountsTest do
   alias CoreApp.Accounts
 
   import CoreApp.AccountsFixtures
-  alias CoreApp.Accounts.{User, UserToken}
+  import CoreApp.OfficesFixtures
+
+  alias CoreApp.Accounts.{Scope, User, UserToken}
+  alias CoreApp.AuditLogs.AuditLog
 
   describe "get_user_by_email/1" do
     test "does not return the user if the email does not exist" do
@@ -468,6 +471,183 @@ defmodule CoreApp.AccountsTest do
       assert user_token.sent_to == user.email
       assert user_token.context == "login"
     end
+  end
+
+  describe "list_users/2" do
+    setup :setup_admin
+
+    test "メールアドレスの昇順で返し、既定では無効な利用者を除く", %{admin: admin, office: office} do
+      first = user_fixture(%{email: "aaa@example.com", office_id: office.id})
+      last = user_fixture(%{email: "zzz@example.com", office_id: office.id})
+      inactive = user_fixture(%{email: "mmm@example.com", office_id: office.id})
+      {:ok, _user} = Accounts.update_user_profile(inactive, %{"active" => false})
+
+      emails = admin |> Accounts.list_users() |> Map.fetch!(:entries) |> Enum.map(& &1.email)
+
+      assert first.email in emails
+      assert last.email in emails
+      refute inactive.email in emails
+      assert emails == Enum.sort(emails)
+    end
+
+    test "無効な利用者も含められる", %{admin: admin, office: office} do
+      user = user_fixture(%{office_id: office.id})
+      {:ok, _user} = Accounts.update_user_profile(user, %{"active" => false})
+
+      assert Accounts.list_users(admin, %{"active" => "all"}).total_entries >= 2
+      assert Accounts.list_users(admin, %{"active" => "false"}).total_entries == 1
+    end
+
+    test "キーワード・拠点・ロールで絞り込める", %{admin: admin, office: office} do
+      other_office = office_fixture()
+      manager = user_fixture(%{name: "絞込 花子", role: :manager, office_id: other_office.id})
+
+      assert [found] = Accounts.list_users(admin, %{"q" => "絞込"}).entries
+      assert found.id == manager.id
+
+      assert [found] = Accounts.list_users(admin, %{"office_id" => other_office.id}).entries
+      assert found.id == manager.id
+
+      assert [found] = Accounts.list_users(admin, %{"role" => "manager"}).entries
+      assert found.id == manager.id
+
+      assert Accounts.list_users(admin, %{"office_id" => office.id}).total_entries == 1
+    end
+  end
+
+  describe "register_user/3" do
+    setup :setup_admin
+
+    test "アカウントを発行し、監査ログを記録する", %{admin: admin, office: office} do
+      Repo.delete_all(AuditLog)
+
+      assert {:ok, %User{} = user} =
+               Accounts.register_user(admin, %{
+                 "email" => "new@example.com",
+                 "name" => "新規 太郎",
+                 "office_id" => office.id,
+                 "role" => "manager"
+               })
+
+      assert user.role == :manager
+      assert user.active
+      refute user.confirmed_at
+      refute user.hashed_password
+
+      assert [log] = Repo.all(AuditLog)
+      assert log.action == :create
+      assert log.resource_type == "user"
+      assert log.resource_id == user.id
+      assert log.user_id == admin.user.id
+      assert log.changes["email"] == "new@example.com"
+      assert log.changes["role"] == "manager"
+    end
+
+    test "重複するメールアドレスは登録できず、監査ログも残らない", %{admin: admin, office: office} do
+      existing = user_fixture(%{office_id: office.id})
+      Repo.delete_all(AuditLog)
+
+      assert {:error, changeset} =
+               Accounts.register_user(admin, %{
+                 "email" => existing.email,
+                 "name" => "重複 太郎",
+                 "office_id" => office.id,
+                 "role" => "member"
+               })
+
+      assert "has already been taken" in errors_on(changeset).email
+      assert Repo.all(AuditLog) == []
+    end
+  end
+
+  describe "update_user/4" do
+    setup :setup_admin
+
+    test "氏名の変更は update として記録する", %{admin: admin, office: office} do
+      user = user_fixture(%{office_id: office.id})
+      Repo.delete_all(AuditLog)
+
+      assert {:ok, updated} = Accounts.update_user(admin, user, %{"name" => "変更 太郎"})
+      assert updated.name == "変更 太郎"
+
+      assert [log] = Repo.all(AuditLog)
+      assert log.action == :update
+      assert log.changes == %{"name" => "変更 太郎"}
+    end
+
+    test "ロールの変更は role_change として記録する", %{admin: admin, office: office} do
+      user = user_fixture(%{office_id: office.id})
+      Repo.delete_all(AuditLog)
+
+      assert {:ok, updated} =
+               Accounts.update_user(admin, user, %{"name" => "昇格 太郎", "role" => "manager"})
+
+      assert updated.role == :manager
+
+      assert [log] = Repo.all(AuditLog)
+      assert log.action == :role_change
+      assert log.changes["role"] == "manager"
+    end
+
+    test "無効化するとログインできなくなる", %{admin: admin, office: office} do
+      user = user_fixture(%{office_id: office.id}) |> set_password()
+
+      assert {:ok, updated} = Accounts.update_user(admin, user, %{"active" => false})
+      refute updated.active
+
+      assert Accounts.authenticate_user(user.email, valid_user_password()) ==
+               {:error, :inactive}
+    end
+
+    test "V-32 自分自身のロールは変更できない", %{admin: admin} do
+      assert {:error, changeset} =
+               Accounts.update_user(admin, admin.user, %{"role" => "member"})
+
+      assert errors_on(changeset).role == ["は自分自身では変更できません"]
+    end
+
+    test "V-32 自分自身を無効化できない", %{admin: admin} do
+      assert {:error, changeset} =
+               Accounts.update_user(admin, admin.user, %{"active" => false})
+
+      assert errors_on(changeset).active == ["は自分自身では変更できません"]
+    end
+
+    test "自分自身でも氏名は変更できる", %{admin: admin} do
+      assert {:ok, updated} = Accounts.update_user(admin, admin.user, %{"name" => "自分 太郎"})
+      assert updated.name == "自分 太郎"
+    end
+  end
+
+  describe "unlock_user/3" do
+    setup :setup_admin
+
+    test "ロックを解除し、監査ログを記録する", %{admin: admin, office: office} do
+      user = user_fixture(%{office_id: office.id}) |> set_password()
+
+      locked =
+        Enum.reduce(1..10, user, fn _attempt, acc ->
+          {:ok, updated} = Accounts.record_failed_attempt(acc)
+          updated
+        end)
+
+      assert User.locked?(locked)
+      Repo.delete_all(AuditLog)
+
+      assert {:ok, unlocked} = Accounts.unlock_user(admin, locked)
+      refute User.locked?(unlocked)
+      assert unlocked.failed_attempts == 0
+
+      assert [log] = Repo.all(AuditLog)
+      assert log.action == :update
+    end
+  end
+
+  defp setup_admin(_context) do
+    office = office_fixture()
+    admin = admin_fixture(%{office_id: office.id})
+
+    %{office: office, admin: Scope.for_user(admin)}
   end
 
   describe "inspect/2 for the User module" do

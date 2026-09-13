@@ -6,6 +6,8 @@ defmodule CoreAppWeb.DashboardLive.Index do
   alias CoreApp.Alerts
   alias CoreApp.OperationReports
 
+  alias CoreAppWeb.UserLive.Labels
+
   @impl true
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
@@ -26,7 +28,7 @@ defmodule CoreAppWeb.DashboardLive.Index do
           <p class="text-eyebrow text-ink-muted">ようこそ</p>
           <p class="text-heading-2 mt-1">{@current_scope.user.name} さん</p>
           <p class="text-body-sm text-ink-muted mt-2">
-            {role_label(@current_scope.role)} ／ {@current_scope.user.office.name}
+            {Labels.role(@current_scope.role)} ／ {@current_scope.user.office.name}
           </p>
         </section>
 
@@ -124,8 +126,4 @@ defmodule CoreAppWeb.DashboardLive.Index do
       %{overdue: 0, within_30: 0}
     end
   end
-
-  defp role_label(:admin), do: "管理者"
-  defp role_label(:manager), do: "運行管理者"
-  defp role_label(:member), do: "一般利用者"
 end
