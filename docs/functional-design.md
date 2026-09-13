@@ -125,8 +125,10 @@ URL は [coding-rules.md](coding-rules.md) 8.4 に従い、一般利用者向け
 | 事故・ヒヤリ 一覧 | `/management/incidents` | admin / manager |
 | 事故・ヒヤリ 詳細・分析・承認 | `/management/incidents/:id` | admin / manager |
 | 集計レポート | `/management/reports` | admin / manager |
-| 拠点一覧・登録・編集 | `/management/offices` 配下 | admin |
-| ユーザー一覧・登録・編集 | `/management/users` 配下 | admin |
+| 拠点一覧 | `/management/offices` | admin |
+| 拠点 登録・編集 | `/management/offices/new`, `/management/offices/:id/edit` | admin |
+| ユーザー一覧 | `/management/users` | admin |
+| ユーザー 登録・編集 | `/management/users/new`, `/management/users/:id/edit` | admin |
 | 監査ログ一覧 | `/management/audit_logs` | admin |
 
 `:id` を含むパスは具体パスより後に定義する。
@@ -415,6 +417,20 @@ stateDiagram-v2
 ---
 
 ## 6. 業務ルール・バリデーション
+
+### 6.0 拠点・ユーザー（F-1）
+
+| # | ルール | エラー時の挙動 |
+|---|-------|--------------|
+| V-29 | `offices.code` は全社で一意 | フォーム上にエラーを表示し保存しない |
+| V-30 | 拠点の物理削除は行わない。`active = false` で運用し、無効な拠点は車両・運転者・ユーザーの拠点の選択肢から除外する | 削除ボタンを提供しない |
+| V-31 | `users.email` は全社で一意。**管理者は編集画面でメールアドレスを変更できない**（変更は本人が設定画面から確認メール経由で行う） | 登録時のみ入力可。編集画面では読み取り専用 |
+| V-32 | 管理者は**自分自身のロール変更・無効化ができない** | 保存不可。画面でも該当項目を無効化する。管理画面に誰も入れなくなることを防ぐため |
+| V-33 | 無効化した利用者はログインできない。作成済みの日報・記録は保持する | ログイン時に拒否する |
+
+アカウントの発行時にパスワードは設定せず、**ログインリンク**を送って本人に設定させる。
+管理者は同じリンクをいつでも再送でき、ログイン失敗によるロックも解除できる。
+利用者の登録・更新は監査ログに記録し、**ロールが変わる更新は `role_change`** として記録する。
 
 ### 6.1 車両（F-2）
 

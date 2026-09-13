@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>要求内容 - 組織・拠点・ユーザー管理</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:900px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  .pill { display:inline-block; border-radius:9999px; padding:4px 10px; font-size:12px; font-weight:600; color:#fff; }
+  .p0 { background:var(--accent-orange); } .p1 { background:var(--primary); }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260913-organization-management</div>
+<h1>要求内容：組織・拠点・ユーザー管理</h1>
+<p style="color:var(--ink-muted)">
+  対象機能: <strong>F-1 組織・拠点・ユーザー管理</strong>（<a href="../../docs/product-requirements.md" style="color:var(--primary)">product-requirements.md</a> F-1 /
+  <a href="../../docs/functional-design.md" style="color:var(--primary)">functional-design.md</a> 2・3.3・4.3）
+</p>
+
+<h2>1. 背景</h2>
+<div class="card">
+  <p>拠点とアカウントは全機能の前提（拠点スコープ・ロール・監査ログの操作者）でありながら、
+  <strong>現在は <code>priv/repo/seeds.exs</code> と <code>mix run</code> でしか作成できない</strong>。
+  管理者が自分で運用を始められず、実質的に本稼働できない状態にある。</p>
+  <p>Context（<code>Offices</code> / <code>Accounts</code> / <code>AuditLogs</code>）は認証実装時に作られており、
+  今回は<strong>一覧クエリと管理者向け画面が中心</strong>になる。ルーターの <code>:require_admin</code> の
+  live_session も空のまま残っている。</p>
+</div>
+
+<h2>2. 目的</h2>
+<ul>
+  <li>管理者がコンソールを触らずに拠点とアカウントを発行・変更できる状態にする</li>
+  <li>退職者のアカウントを無効化でき、過去の記録は残る運用を成立させる</li>
+  <li>初回パスワード設定とパスワード忘れを、管理者がログインリンクの再送で救済できるようにする</li>
+  <li>これまで書きためた監査ログを、管理者が画面で追えるようにする</li>
+</ul>
+
+<h2>3. 対象範囲</h2>
+<table>
+  <thead><tr><th style="width:48px">#</th><th style="width:100px">優先度</th><th>要求</th></tr></thead>
+  <tbody>
+    <tr><td>R-1</td><td><span class="pill p0">P0</span></td>
+      <td><strong>拠点の一覧・登録・編集</strong>（<code>/management/offices</code>）。拠点コード・名称・郵便番号・住所・電話番号・有効フラグ</td></tr>
+    <tr><td>R-2</td><td><span class="pill p0">P0</span></td>
+      <td><strong>拠点の無効化</strong>。物理削除は行わず <code>active = false</code> で運用し、無効な拠点は他機能の選択肢に出さない</td></tr>
+    <tr><td>R-3</td><td><span class="pill p0">P0</span></td>
+      <td><strong>ユーザーの一覧・登録・編集</strong>（<code>/management/users</code>）。氏名・メールアドレス・所属拠点・ロール・有効フラグ</td></tr>
+    <tr><td>R-4</td><td><span class="pill p0">P0</span></td>
+      <td><strong>ユーザーの無効化</strong>。無効化後はログインできず、過去に登録した日報などの記録は保持される</td></tr>
+    <tr><td>R-5</td><td><span class="pill p0">P0</span></td>
+      <td><strong>ログインリンクの発行</strong>。初回パスワード設定とパスワード忘れの救済を、管理者が画面から行える</td></tr>
+    <tr><td>R-6</td><td><span class="pill p0">P0</span></td>
+      <td><strong>ロック解除</strong>。ログイン失敗10回でロックされたアカウントを、管理者が解除できる</td></tr>
+    <tr><td>R-7</td><td><span class="pill p0">P0</span></td>
+      <td><strong>ロックアウトの防止</strong>。管理者は自分自身のロール変更・無効化ができない</td></tr>
+    <tr><td>R-8</td><td><span class="pill p0">P0</span></td>
+      <td><strong>ユーザー操作の監査ログ記録</strong>。登録・更新・ロール変更を記録する（PRD セキュリティ「ユーザー権限の変更」）</td></tr>
+    <tr><td>R-9</td><td><span class="pill p0">P0</span></td>
+      <td><strong>監査ログ一覧</strong>（<code>/management/audit_logs</code>）。操作者・操作日時・対象・変更内容を、リソース種別・操作・操作者で絞り込んで参照できる。<strong>管理者のみ</strong></td></tr>
+    <tr><td>R-10</td><td><span class="pill p0">P0</span></td>
+      <td><strong>アクセス制御</strong>。運行管理者・一般利用者はメニューに表示されず、URL直接指定でもブロックされる</td></tr>
+    <tr><td>R-11</td><td><span class="pill p1">P1</span></td>
+      <td><strong>運転者台帳との紐付けの可視化</strong>。ユーザー一覧・編集画面で、紐付いた運転者が分かるようにする</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 対象外（今回やらないこと）</h2>
+<table>
+  <thead><tr><th style="width:260px">項目</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr><td>管理者によるメールアドレスの変更</td><td>到達確認ができないため。変更は本人が <code>/users/settings</code> から確認メール経由で行う。<strong>登録時のみ入力可</strong>とする</td></tr>
+    <tr><td>管理者による初期パスワードの設定</td><td>平文のパスワードを管理者が知る運用を作らない。発行はログインリンクに一本化する</td></tr>
+    <tr><td>拠点・ユーザーの削除</td><td>参照整合と記録の保持のため、無効化で運用する（PRD データ保持）</td></tr>
+    <tr><td>拠点の監査ログ記録</td><td>PRD の監査対象の列挙に拠点マスタが含まれない。加えて初期拠点の作成時には操作者が存在しない</td></tr>
+    <tr><td>監査ログのCSV出力</td><td>F-7 のCSV出力でまとめて扱う</td></tr>
+  </tbody>
+</table>
+
+<h2>5. 受け入れ条件</h2>
+<div class="card">
+<ul>
+  <li>管理者が画面から拠点とユーザーを登録でき、登録したユーザーにログインリンクが届く</li>
+  <li>重複する拠点コード・メールアドレスは、フォーム上でエラーになり保存されない</li>
+  <li>無効化したユーザーはログインできず、そのユーザーが作成した日報は一覧に残る</li>
+  <li>無効化した拠点は、車両・運転者・ユーザーの拠点選択肢に出ない</li>
+  <li>管理者は自分自身のロールを変更できず、自分を無効化できない</li>
+  <li>ユーザーのロールを変更すると、監査ログに <code>role_change</code> として記録される</li>
+  <li>運行管理者が <code>/management/users</code> にURL直接アクセスするとブロックされる</li>
+  <li>監査ログ一覧で、リソース種別・操作・操作者で絞り込める</li>
+  <li><code>make check</code>（compile / format / credo / test）がすべて通る</li>
+</ul>
+</div>
+
+<div class="note">
+  <strong>前提</strong>：認証（ログイン・マジックリンク・設定画面）、<code>Offices</code> / <code>Accounts</code> /
+  <code>AuditLogs</code> Context、3層の認可（plug・on_mount・クエリ）は実装済み。
+</div>
+</main>
+</body>
+</html>

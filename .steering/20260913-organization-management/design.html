@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設計 - 組織・拠点・ユーザー管理</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:980px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  h3 { font-size:19px; font-weight:600; margin:24px 0 8px; }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  pre { background:var(--surface); border:1px solid var(--hairline); border-radius:8px; padding:16px; overflow-x:auto; font-size:13px; line-height:1.6; }
+  pre code { background:none; padding:0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  .warn { border-left:3px solid var(--accent-orange); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  ul { padding-left:20px; } li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260913-organization-management</div>
+<h1>設計：組織・拠点・ユーザー管理</h1>
+<p style="color:var(--ink-muted)">
+  <a href="requirements.html" style="color:var(--primary)">requirements.html</a> の要求を実装に落とす。
+  規範は <a href="../../docs/coding-rules.md" style="color:var(--primary)">coding-rules.md</a> と
+  <a href="../../docs/DESIGN-notion.md" style="color:var(--primary)">DESIGN-notion.md</a>。
+</p>
+
+<h2>1. 全体構成</h2>
+<div class="card">
+<p>新しい集約は作らない。既存 Context に<strong>一覧クエリと管理者向けの操作</strong>を足し、画面を3セット追加する。</p>
+<pre><code>lib/core_app/
+├── offices.ex          # list_offices/2 を追加（無効な拠点も扱える一覧）
+├── accounts.ex         # list_users/2・register_user/3・update_user/4・unlock_user/3 を追加
+└── audit_logs.ex       # 一覧の絞り込みを操作・操作者の部分一致まで拡張
+
+lib/core_app_web/live/
+├── office_live/admin/{index,form}.ex
+├── user_live/admin/{index,form}.ex     # 既存の user_live/（認証画面）に admin/ を足す
+└── audit_log_live/admin/index.ex</code></pre>
+<p>いずれも管理者専用のため、ルーターの <code>:require_admin</code> live_session（plug は
+<code>require_admin_user</code>）の中に置く。coding-rules 8.3 のとおり plug と <code>on_mount</code> の強さを揃える。</p>
+</div>
+
+<h2>2. ドメイン層</h2>
+
+<h3>2.1 Offices</h3>
+<pre><code>list_offices(scope, params)   # q（拠点コード・名称）/ active で絞り込み、コード昇順
+all_offices()                 # 既存。有効な拠点のみ。他機能の選択肢用</code></pre>
+<p><code>all_offices/0</code> が既に <code>active == true</code> で絞っているため、拠点を無効化するだけで
+車両・運転者・ユーザーの選択肢から外れる（R-2）。</p>
+
+<div class="warn">
+<strong>設計判断 D-1：拠点の作成・更新は監査ログを取らない</strong><br>
+PRD セキュリティの監査対象は「台帳の作成・更新・削除、ユーザー権限の変更、日報の承認・差戻し、
+事故記録の全社共有設定」であり、拠点マスタは含まれない。<br>
+加えて、<strong>最初の拠点は操作者（管理者）が存在しない状態で作られる</strong>（seeds・フィクスチャ）。
+ここで <code>scope</code> を必須にすると「拠点がないと管理者を作れず、管理者がないと拠点を作れない」循環になる。
+そのため <code>create_office/1</code> / <code>update_office/2</code> は現在の形のまま据え置く。
+</div>
+
+<h3>2.2 Accounts</h3>
+<pre><code>list_users(scope, params)            # q（氏名・メール）/ office_id / role / active、メール昇順
+get_user_for_admin!(scope, id)       # office と driver を preload
+register_user(scope, attrs, opts)    # 作成 + 監査ログ（create）
+update_user(scope, user, attrs, opts)# 更新 + 監査ログ（role 変更時は role_change）
+unlock_user(scope, user)             # ログイン失敗によるロックの解除</code></pre>
+<p>既存の <code>create_user/1</code> と <code>update_user_profile/2</code> は、認証プラミングと
+seeds・フィクスチャが使う低レベル関数として残し、<strong>管理者操作の入口を別名で足す</strong>。
+これも D-1 と同じ循環（管理者を作るのに管理者が要る）を避けるため。</p>
+
+<div class="note">
+<strong>設計判断 D-2：ロール変更は <code>role_change</code> として記録する</strong><br>
+<code>audit_logs.action</code> に既に <code>role_change</code> がある。1回の更新で氏名とロールが同時に
+変わることもあるため、<strong>ロールが変わったかどうかだけで action を決める</strong>
+（変わっていれば <code>role_change</code>、それ以外は <code>update</code>）。変更差分は <code>changes</code> に入る。
+</div>
+
+<div class="warn">
+<strong>設計判断 D-3：自分自身のロール変更・無効化を禁止する（R-7）</strong><br>
+最後の管理者が自分を <code>member</code> にすると、誰も管理画面に入れなくなる。
+Context の <code>update_user/4</code> で <code>scope.user.id == user.id</code> のときにロール・有効フラグの
+変更を拒否し、画面側でも該当項目を無効化する。<strong>Web だけの制御にしない</strong>
+（coding-rules 11章の多層防御）。
+</div>
+
+<h3>2.3 AuditLogs</h3>
+<p>既存の <code>list_audit_logs/2</code> に <code>action</code> と <code>q</code>（操作者の氏名・メール）の絞り込みを足す。
+操作者の選択肢はユーザー数だけ増えるため、セレクトではなく<strong>キーワード検索</strong>にする。</p>
+
+<h2>3. バリデーション</h2>
+<table>
+  <thead><tr><th style="width:80px">#</th><th>ルール</th><th style="width:220px">扱い</th></tr></thead>
+  <tbody>
+    <tr><td>V-29</td><td>拠点コードは全社で一意</td><td>フォームにエラー表示</td></tr>
+    <tr><td>V-30</td><td>拠点は物理削除しない。無効化で運用し、無効な拠点は選択肢に出さない</td><td>削除ボタンを提供しない</td></tr>
+    <tr><td>V-31</td><td>メールアドレスは全社で一意。管理者は編集画面で変更できない</td><td>登録時のみ入力可。編集画面では読み取り専用</td></tr>
+    <tr><td>V-32</td><td>管理者は自分自身のロール変更・無効化ができない</td><td>Context で拒否し、画面でも入力を無効化</td></tr>
+    <tr><td>V-33</td><td>無効化したユーザーはログインできない。記録は保持する</td><td>実装済み（<code>authenticate_user/2</code>）</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 画面</h2>
+<table>
+  <thead><tr><th style="width:300px">URL</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>/management/offices</code></td>
+      <td>一覧。キーワードと有効/無効で絞り込み。既定は有効のみ。コード昇順</td></tr>
+    <tr><td><code>/management/offices/new</code><br><code>/management/offices/:id/edit</code></td>
+      <td>登録・編集。無効化はチェックボックス</td></tr>
+    <tr><td><code>/management/users</code></td>
+      <td>一覧。キーワード（氏名・メール）／拠点／ロール／状態で絞り込み。ロールと状態（有効・無効・ロック中）をバッジ表示</td></tr>
+    <tr><td><code>/management/users/new</code><br><code>/management/users/:id/edit</code></td>
+      <td>登録・編集。編集ではメールアドレスを読み取り専用にし、<strong>ログインリンク送信</strong>と<strong>ロック解除</strong>をこの画面に置く。自分自身の編集ではロール・有効フラグを無効化し、理由を注記する</td></tr>
+    <tr><td><code>/management/audit_logs</code></td>
+      <td>一覧。操作日時（JST）・操作者・操作・リソース種別・対象ID・変更内容。変更内容は <code>key: 値</code> の行で表示する</td></tr>
+  </tbody>
+</table>
+<p>登録直後にログインリンクを自動送信し、一覧へ「アカウントを発行し、ログインリンクを送信しました」と出す。
+状態バッジは既存の <code>&lt;.status_badge&gt;</code> に <code>:user</code> 種別を足して使う（新しい色は増やさない）。
+サイドナビの「ユーザー」「拠点」「監査ログ」を実装済みにする。</p>
+
+<h2>5. テスト方針</h2>
+<table>
+  <thead><tr><th style="width:260px">対象</th><th>観点</th></tr></thead>
+  <tbody>
+    <tr><td><code>Offices</code></td><td>一覧の絞り込み、無効な拠点が <code>all_offices/0</code> に出ないこと</td></tr>
+    <tr><td><code>Accounts</code></td><td>登録・更新の監査ログ（<code>create</code> / <code>update</code> / <code>role_change</code>）、自分自身の変更の拒否、ロック解除、一覧の絞り込み</td></tr>
+    <tr><td><code>AuditLogs</code></td><td>追加した絞り込み（操作・操作者キーワード）</td></tr>
+    <tr><td>LiveView</td><td>登録でログインリンクが届く、重複エラー、自分自身ではロールを変更できない、<strong>運行管理者がURL直接アクセスできない</strong></td></tr>
+  </tbody>
+</table>
+</main>
+</body>
+</html>
