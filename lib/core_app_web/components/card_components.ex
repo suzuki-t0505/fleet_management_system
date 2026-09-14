@@ -69,17 +69,4 @@ defmodule CoreAppWeb.CardComponents do
     </div>
     """
   end
-
-  @doc """
-  準備中であることを示す枠です。後続機能の実装で置き換えます。
-  """
-  attr :message, :string, required: true
-
-  def placeholder(assigns) do
-    ~H"""
-    <p class="text-body-sm text-ink-faint rounded-md bg-canvas-soft px-4 py-6 text-center">
-      {@message}
-    </p>
-    """
-  end
 end

@@ -38,9 +38,18 @@ defmodule CoreAppWeb.Router do
         live "/:id", Show, :show
       end
 
+      scope "/incidents", IncidentLive.Member do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+        live "/:id", Show, :show
+      end
+
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
+
+    get "/attachments/:id", AttachmentController, :download
 
     post "/users/update-password", UserSessionController, :update_password
   end
@@ -81,7 +90,12 @@ defmodule CoreAppWeb.Router do
 
       live "/alerts", AlertLive.Manager.Index, :index
 
-      # 事故ヒヤリ・集計の各画面は機能実装時に追加する
+      scope "/incidents", IncidentLive.Manager do
+        live "/", Index, :index
+        live "/:id", Show, :show
+      end
+
+      # 集計の画面は機能実装時に追加する
     end
   end
 

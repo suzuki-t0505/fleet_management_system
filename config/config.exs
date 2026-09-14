@@ -55,6 +55,13 @@ config :core_app, Oban,
      ]}
   ]
 
+# 添付ファイルの保存先
+#
+# 既定はローカルディスク。本番は runtime.exs で Cloud Storage に差し替える。
+config :core_app, :storage,
+  adapter: CoreApp.Utils.Storage.Local,
+  root: "priv/uploads"
+
 # Configure the mailer
 #
 # By default it uses the "Local" adapter which stores the emails

@@ -24,10 +24,18 @@ defmodule CoreAppWeb.StatusComponents do
     locked: {"ロック中", "bg-accent-orange-deep"}
   }
 
+  @incident_statuses %{
+    reported: {"報告済み", "bg-accent-orange-deep"},
+    analyzing: {"分析中", "bg-accent-orange"},
+    countermeasure_reported: {"改善策登録済み", "bg-accent-teal"},
+    closed: {"完了", "bg-accent-green"}
+  }
+
   @labels %{
     vehicle: @vehicle_statuses,
     operation_report: @report_statuses,
-    user: @user_statuses
+    user: @user_statuses,
+    incident: @incident_statuses
   }
 
   @doc """
@@ -36,7 +44,10 @@ defmodule CoreAppWeb.StatusComponents do
   `type` で対象のリソースを指定します（既定は車両）。
   """
   attr :status, :atom, required: true
-  attr :type, :atom, default: :vehicle, values: [:vehicle, :operation_report, :user]
+
+  attr :type, :atom,
+    default: :vehicle,
+    values: [:vehicle, :operation_report, :user, :incident]
 
   def status_badge(assigns) do
     {label, color} = @labels |> Map.fetch!(assigns.type) |> Map.fetch!(assigns.status)

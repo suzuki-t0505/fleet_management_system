@@ -47,3 +47,7 @@ gcp-key*.json
 
 # Claude Code local settings (machine specific).
 .claude/settings.local.json
+
+# 添付ファイルの保存先（ローカルアダプタ）
+/priv/uploads/
+/priv/uploads_test/

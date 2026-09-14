@@ -2,9 +2,11 @@ defmodule CoreAppWeb.VehicleLive.Manager.Show do
   @moduledoc false
   use CoreAppWeb, :live_view
 
+  alias CoreApp.Incidents
   alias CoreApp.Maintenances
   alias CoreApp.Vehicles
 
+  alias CoreAppWeb.IncidentLive.Labels, as: IncidentLabels
   alias CoreAppWeb.MaintenanceLive.Labels, as: MaintenanceLabels
   alias CoreAppWeb.VehicleLive.Labels
 
@@ -17,7 +19,8 @@ defmodule CoreAppWeb.VehicleLive.Manager.Show do
      socket
      |> assign(vehicle: vehicle)
      |> assign(page_title: vehicle.plate_number)
-     |> assign(maintenances: Maintenances.all_maintenances_for_vehicle(scope, vehicle.id))}
+     |> assign(maintenances: Maintenances.all_maintenances_for_vehicle(scope, vehicle.id))
+     |> assign(incidents: Incidents.all_incidents_for_vehicle(scope, vehicle.id))}
   end
 
   @impl true
@@ -133,8 +136,38 @@ defmodule CoreAppWeb.VehicleLive.Manager.Show do
           </div>
         </.section_card>
 
-        <.section_card title="履歴">
-          <.placeholder message="運行日報・事故/ヒヤリ記録は、各機能の実装後にここへ表示されます。" />
+        <.section_card title="事故・ヒヤリ履歴">
+          <p :if={@incidents == []} class="text-body-sm text-ink-muted">
+            事故・ヒヤリの記録はありません。
+          </p>
+
+          <div :if={@incidents != []} class="space-y-4">
+            <.data_table
+              id="vehicle-incidents"
+              rows={@incidents}
+              row_click={&JS.navigate(~p"/management/incidents/#{&1}")}
+            >
+              <:col :let={incident} label="発生日時">
+                {format_datetime(incident.occurred_at)}
+              </:col>
+              <:col :let={incident} label="区分">
+                {IncidentLabels.category(incident.category)}
+              </:col>
+              <:col :let={incident} label="場所">{incident.place}</:col>
+              <:col :let={incident} label="ステータス">
+                <.status_badge status={incident.status} type={:incident} />
+              </:col>
+            </.data_table>
+          </div>
+        </.section_card>
+
+        <.section_card title="運行日報">
+          <.link
+            navigate={~p"/management/operation_reports?#{%{"vehicle_id" => @vehicle.id}}"}
+            class="text-body-sm text-primary hover:underline"
+          >
+            この車両の運行日報を見る
+          </.link>
         </.section_card>
       </div>
     </Layouts.app>
