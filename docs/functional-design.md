@@ -70,6 +70,7 @@
 | クエリ | 一覧・検索クエリに拠点条件を必ず付与する（Context 関数の引数に `scope` を必須で受け取る） |
 
 `member` は自分に紐づくレコードのみを対象とするため、クエリ層で `driver_id` または `created_by_user_id` の条件を追加する。
+事故・ヒヤリは加えて `shared_company_wide = true` の記録を全ロールが参照できる（F-6）。
 
 ---
 
@@ -100,8 +101,9 @@ URL は [coding-rules.md](coding-rules.md) 8.4 に従い、一般利用者向け
 | 日報 新規作成 | `/operation_reports/new` | `:new` |
 | 日報 編集 | `/operation_reports/:id/edit` | `:edit` |
 | 日報 詳細 | `/operation_reports/:id` | `:show` |
-| 事故・ヒヤリ 一覧（自分の報告＋全社共有） | `/incidents` | `:index` |
+| 事故・ヒヤリ 一覧（自分の報告・自分が運転者＋全社共有） | `/incidents` | `:index` |
 | 事故・ヒヤリ 報告 | `/incidents/new` | `:new` |
+| 事故・ヒヤリ 編集（報告直後のみ） | `/incidents/:id/edit` | `:edit` |
 | 事故・ヒヤリ 詳細 | `/incidents/:id` | `:show` |
 | 車両 参照一覧（自拠点） | `/vehicles` | `:index` |
 | 車両 参照詳細 | `/vehicles/:id` | `:show` |
@@ -491,8 +493,11 @@ stateDiagram-v2
 | V-24 | `occurred_at` は未来日時を登録できない | 保存不可 |
 | V-25 | `status` を `countermeasure_reported` に進めるには `direct_cause` と `countermeasure` が必須 | 保存不可 |
 | V-26 | 承認は報告者本人以外が行う | 報告者本人には承認ボタンを表示しない |
-| V-27 | `shared_company_wide = true` の記録を他拠点ユーザーが閲覧する場合、運転者氏名・報告者氏名を非表示にする | 表示側で伏字化 |
+| V-27 | `shared_company_wide = true` の記録を他拠点ユーザーが閲覧する場合、運転者氏名・報告者氏名を非表示にする。**全拠点に責任を持つ管理者は対象外**とする | 表示側で伏字化 |
 | V-28 | 添付は1記録あたり10ファイル・1ファイル10MBまで | 超過時は拒否 |
+| V-28-2 | 添付は PDF / JPEG / PNG のみ。**先頭バイト（マジックナンバー）で判定**し、拡張子と送信された MIMEタイプは信用しない | 不一致は拒否。保存する MIMEタイプは判定結果を使う |
+| V-28-3 | `countermeasure_due_on` に過去日は入力できない | 保存不可 |
+| V-28-4 | 報告内容を編集できるのは、一般利用者は**自分の報告が `reported` の間だけ**。運行管理者以上は自拠点の `closed` 以外 | 編集ボタンを表示せず、Context でも拒否 |
 
 ---
 

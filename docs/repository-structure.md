@@ -80,12 +80,12 @@ lib/core_app/
 | `operation_reports.ex` | `operation_reports/` | `operation_report.ex` / `refueling.ex` |
 | `maintenances.ex` | `maintenances/` | `maintenance.ex` |
 | `incidents.ex` | `incidents/` | `incident.ex` |
-| `attachments.ex` | `attachments/` | `attachment.ex` |
+| `attachments.ex` | `attachments/` | `attachment.ex`（対象は車両・点検整備・事故ヒヤリの3種。外部キー制約は張らない） |
 | `alerts.ex` | `alerts/` | `alert_notification.ex` / `deadline.ex`（期限の値オブジェクト） / `alert_notifier.ex`（メール組み立て） |
 | `audit_logs.ex` | `audit_logs/` | `audit_log.ex` |
 | `reports.ex` | （なし） | 集計クエリ専用。スキーマを持たない読み取り専用 Context |
 
-`utils/` には横断的な処理を置く。現時点で `convert_datetime.ex`（JSTの「今日」・表示変換）と `pagination.ex`（一覧の共通ページネーション）がある。
+`utils/` には横断的な処理を置く。現時点で `convert_datetime.ex`（JSTの「今日」・表示変換）、`pagination.ex`（一覧の共通ページネーション）、`storage.ex` と `storage/`（添付ファイルの保存先。behaviour + ローカル / GCS アダプタ）がある。
 
 ### 2.3 新しいファイルをどこに置くかの判断
 

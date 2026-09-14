@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設計 - 事故・ヒヤリ記録と改善報告</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:980px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  h3 { font-size:19px; font-weight:600; margin:24px 0 8px; }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  pre { background:var(--surface); border:1px solid var(--hairline); border-radius:8px; padding:16px; overflow-x:auto; font-size:13px; line-height:1.6; }
+  pre code { background:none; padding:0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  .warn { border-left:3px solid var(--accent-orange); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  ul { padding-left:20px; } li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260914-incidents</div>
+<h1>設計：事故・ヒヤリ記録と改善報告</h1>
+<p style="color:var(--ink-muted)">
+  <a href="requirements.html" style="color:var(--primary)">requirements.html</a> の要求を実装に落とす。
+  規範は <a href="../../docs/coding-rules.md" style="color:var(--primary)">coding-rules.md</a> と
+  <a href="../../docs/DESIGN-notion.md" style="color:var(--primary)">DESIGN-notion.md</a>。
+</p>
+
+<h2>1. 全体構成</h2>
+<div class="card">
+<p>集約を2つ追加する。事故・ヒヤリ（<code>incidents</code>）と、汎用の添付ファイル（<code>attachments</code>）。
+添付は車両・点検整備からも使えるよう、<strong>対象を限定しないポリモーフィックな集約</strong>にする。</p>
+<pre><code>lib/core_app/
+├── incidents.ex / incidents/incident.ex
+├── attachments.ex / attachments/attachment.ex
+└── utils/
+    ├── storage.ex          # behaviour + 設定でアダプタを解決するディスパッチャ
+    ├── storage/local.ex    # 開発・テスト用。ローカルディスクに保存
+    └── storage/gcs.ex      # 本番用。goth + google_api_storage
+
+lib/core_app_web/
+├── controllers/attachment_controller.ex   # 認可してから配信・署名URLへ転送
+├── components/attachment_components.ex    # アップロード欄と添付一覧
+└── live/incident_live/
+    ├── labels.ex
+    ├── member/{index,form,show}.ex
+    └── manager/{index,show}.ex</code></pre>
+</div>
+
+<h2>2. データベース</h2>
+<p>いずれも functional-design 4.3 の定義どおり。</p>
+<table>
+  <thead><tr><th style="width:280px">インデックス</th><th>目的</th></tr></thead>
+  <tbody>
+    <tr><td><code>incidents (office_id, occurred_at)</code></td><td>一覧の既定並び（拠点スコープ + 発生日時降順）</td></tr>
+    <tr><td><code>incidents (vehicle_id, occurred_at)</code></td><td>車両ごとの履歴</td></tr>
+    <tr><td><code>incidents (status, office_id)</code></td><td>未対応・未完了の件数（ダッシュボード）</td></tr>
+    <tr><td><code>incidents (shared_company_wide)</code></td><td>全社共有された記録の横断参照</td></tr>
+    <tr><td><code>attachments (attachable_type, attachable_id)</code></td><td>対象に紐づく添付の取得</td></tr>
+  </tbody>
+</table>
+<p><code>attachments</code> は対象が3種類（車両・点検整備・事故）あるため<strong>外部キー制約を張らない</strong>
+（<code>alert_notifications</code> と同じ扱い）。</p>
+
+<h2>3. 事故・ヒヤリ</h2>
+
+<h3>3.1 参照できる範囲</h3>
+<table>
+  <thead><tr><th style="width:140px">ロール</th><th>見える記録</th></tr></thead>
+  <tbody>
+    <tr><td><code>admin</code></td><td>全件</td></tr>
+    <tr><td><code>manager</code></td><td>自拠点の全件 ＋ 他拠点の全社共有された記録</td></tr>
+    <tr><td><code>member</code></td><td>自分が報告した記録 ＋ 自分が運転者の記録 ＋ 全社共有された記録</td></tr>
+  </tbody>
+</table>
+<div class="note">
+<strong>設計判断 D-1：<code>member</code> の範囲に「自分が運転者の記録」を含める</strong><br>
+functional-design 3.2 の画面一覧は「自分の報告＋全社共有」と書いているが、2.1 のデータスコープは
+<strong>「自分が作成した記録・自分が運転者の記録」</strong>である。当事者が自分の事故記録を読めないのは不自然なため、
+広い方（2.1）に合わせる。<strong>functional-design 3.2 の表記を実装に合わせて更新する。</strong>
+</div>
+
+<h3>3.2 状態遷移</h3>
+<p>運行日報と同じく、業務上の動詞を Context 関数にする。</p>
+<pre><code>start_analysis(scope, incident, opts)          # reported → analyzing（運行管理者）
+report_countermeasure(scope, incident, attrs)  # analyzing → countermeasure_reported（V-25）
+approve_incident(scope, incident, opts)        # countermeasure_reported → closed（V-26）
+reject_incident(scope, incident, opts)         # countermeasure_reported → analyzing
+share_incident(scope, incident, shared?, opts) # 全社共有の設定（管理者のみ）</code></pre>
+<p>いずれも監査ログを同一トランザクションで記録する（承認は <code>approve</code>、差戻しは <code>reject</code>、
+共有設定は <code>share</code>）。</p>
+<div class="warn">
+<strong>設計判断 D-2：差戻しの理由欄は作らない</strong><br>
+<code>incidents</code> には <code>rejected_reason</code> に相当するカラムが無い（日報とは異なる）。
+カラムを増やすより、差戻しは「分析中に戻す」操作と割り切り、理由は改善策の欄で伝える運用にする。
+差し戻した事実は監査ログに残る。
+</div>
+
+<h3>3.3 編集できる範囲</h3>
+<table>
+  <thead><tr><th style="width:140px">ロール</th><th>編集できる記録</th></tr></thead>
+  <tbody>
+    <tr><td><code>admin</code></td><td>完了（<code>closed</code>）以外のすべて</td></tr>
+    <tr><td><code>manager</code></td><td>自拠点の、完了以外</td></tr>
+    <tr><td><code>member</code></td><td>自分が報告した、<strong>報告直後（<code>reported</code>）のみ</strong></td></tr>
+  </tbody>
+</table>
+<p>原因分析・改善策の入力は運行管理者以上のみ。一般利用者のフォームには表示しない。</p>
+
+<h3>3.4 匿名化（V-27）</h3>
+<p>「全社共有された記録を<strong>他拠点の利用者</strong>が見る場合」に運転者氏名・報告者氏名を伏せる。
+判定は Context に置き（<code>Incidents.anonymize?/2</code>）、Web 層は真偽だけを見て表示を切り替える。
+管理者は全拠点の責任者のため対象外とする。</p>
+
+<h2>4. 添付ファイル</h2>
+
+<h3>4.1 ストレージの抽象化</h3>
+<pre><code>defmodule CoreApp.Utils.Storage do
+  @callback put(key :: String.t(), path :: String.t(), content_type :: String.t()) ::
+              :ok | {:error, term()}
+  @callback read(key :: String.t()) :: {:ok, binary()} | {:error, term()}
+  @callback url(key :: String.t()) :: {:ok, String.t()} | :stream
+  @callback delete(key :: String.t()) :: :ok | {:error, term()}
+end</code></pre>
+<p>アダプタは <code>config :core_app, :storage, adapter: ...</code> で差し替える。
+coding-rules 13.3 に従い、<strong>モジュール属性ではなく関数で解決する</strong>。</p>
+<table>
+  <thead><tr><th style="width:160px">環境</th><th>アダプタ</th><th>ダウンロード</th></tr></thead>
+  <tbody>
+    <tr><td>dev / test</td><td><code>Storage.Local</code>（<code>priv/uploads</code> 配下）</td><td><code>:stream</code>（アプリが配信）</td></tr>
+    <tr><td>prod</td><td><code>Storage.Gcs</code></td><td>15分の署名付きURLへ転送</td></tr>
+  </tbody>
+</table>
+<div class="warn">
+<strong>設計判断 D-3：ダウンロードは必ずアプリのコントローラを通す</strong><br>
+署名付きURLでも、URLを知っていれば誰でも読めてしまう。<code>AttachmentController</code> で
+<strong>対象レコードをスコープ付きで引き直してから</strong>配信・転送する。参照できない利用者は 404 相当で弾く。
+公開URLはデータベースにもHTMLにも持たせない。
+</div>
+<div class="warn">
+<strong>設計判断 D-4：GCS アダプタは未検証で入る</strong><br>
+開発環境にサービスアカウントの認証情報が無いため、実行経路を確認できない。
+<strong>テストはローカルアダプタに対して書き</strong>、GCS アダプタは本番設定時に疎通確認する前提とする。
+この状態を README とドキュメントに明記する。
+</div>
+
+<h3>4.2 検証（V-28）</h3>
+<table>
+  <thead><tr><th style="width:200px">項目</th><th>扱い</th></tr></thead>
+  <tbody>
+    <tr><td>形式</td><td>PDF / JPEG / PNG。<code>allow_upload</code> の <code>accept</code> に加え、<strong>先頭バイト（マジックナンバー）</strong>を検証する</td></tr>
+    <tr><td>サイズ</td><td>1ファイル10MB。<code>max_file_size</code> で弾く</td></tr>
+    <tr><td>件数</td><td>1記録10ファイル。<strong>既存の添付数を数えてから</strong>上限を決める（<code>max_entries</code> だけでは通算を守れない）</td></tr>
+    <tr><td>保存先キー</td><td><code>attachments/{attachable_type}/{attachable_id}/{ULID}_{元ファイル名}</code>（architecture 4.4）</td></tr>
+  </tbody>
+</table>
+<p>削除は行レコードだけを消し、実体は消さない（architecture 4.4 の方針。ローカルアダプタも同じ挙動にそろえる）。</p>
+
+<h2>5. 画面</h2>
+<table>
+  <thead><tr><th style="width:280px">URL</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>/incidents</code></td><td>一覧。自分の報告・自分が運転者・全社共有。区分とステータスで絞り込み</td></tr>
+    <tr><td><code>/incidents/new</code>・<code>/incidents/:id/edit</code></td><td>報告フォーム（1カラム）。発生状況と写真の添付まで375pxで完了できる</td></tr>
+    <tr><td><code>/incidents/:id</code></td><td>詳細。進捗と改善策を参照。他拠点の共有記録は氏名を伏せる</td></tr>
+    <tr><td><code>/management/incidents</code></td><td>一覧。区分・ステータス・期間・拠点・全社共有で絞り込み。発生日時の降順</td></tr>
+    <tr><td><code>/management/incidents/:id</code></td><td>詳細・分析・承認。状態に応じて操作ボタンを出し分ける。報告者本人には承認ボタンを出さない</td></tr>
+    <tr><td><code>/attachments/:id</code></td><td>添付のダウンロード（コントローラ）</td></tr>
+  </tbody>
+</table>
+<p>ステータスバッジは既存の <code>&lt;.status_badge&gt;</code> に <code>:incident</code> 種別を足す。
+車両詳細に事故・ヒヤリ履歴（直近5件）を追加し、ダッシュボードのプレースホルダを実際の件数に差し替える。</p>
+
+<h2>6. テスト方針</h2>
+<table>
+  <thead><tr><th style="width:260px">対象</th><th>観点</th></tr></thead>
+  <tbody>
+    <tr><td><code>Incident</code> changeset</td><td>V-24（未来日時）・V-25（改善策の必須）</td></tr>
+    <tr><td><code>Incidents</code> Context</td><td>ロール別の可視範囲・状態遷移・V-26（自己承認の拒否）・匿名化・監査ログ</td></tr>
+    <tr><td><code>Attachments</code> Context</td><td>件数上限・拡張子とマジックナンバーの不一致・スコープ外の参照拒否</td></tr>
+    <tr><td><code>Storage.Local</code></td><td>保存 → 読み出し → 削除の往復</td></tr>
+    <tr><td>コントローラ</td><td>権限の無い利用者のダウンロード拒否</td></tr>
+    <tr><td>LiveView</td><td>報告からの一連の流れ、他人の報告が見えないこと、承認ボタンの出し分け</td></tr>
+  </tbody>
+</table>
+</main>
+</body>
+</html>
