@@ -31,6 +31,13 @@ defmodule CoreAppWeb.Router do
         live "/:id", Show, :show
       end
 
+      scope "/operation_reports", OperationReportLive.Member do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+        live "/:id", Show, :show
+      end
+
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
@@ -59,7 +66,22 @@ defmodule CoreAppWeb.Router do
         live "/:id", Show, :show
       end
 
-      # 日報・点検整備・事故ヒヤリ・集計の各画面は機能実装時に追加する
+      scope "/operation_reports", OperationReportLive.Manager do
+        live "/", Index, :index
+        live "/:id/edit", Form, :edit
+        live "/:id", Show, :show
+      end
+
+      scope "/maintenances", MaintenanceLive.Manager do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+        live "/:id", Show, :show
+      end
+
+      live "/alerts", AlertLive.Manager.Index, :index
+
+      # 事故ヒヤリ・集計の各画面は機能実装時に追加する
     end
   end
 
@@ -70,7 +92,19 @@ defmodule CoreAppWeb.Router do
 
     live_session :require_admin,
       on_mount: [{CoreAppWeb.UserAuth, :require_admin}] do
-      # ユーザー・拠点・監査ログの各画面は機能実装時に追加する
+      scope "/offices", OfficeLive.Admin do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+      end
+
+      scope "/users", UserLive.Admin do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+      end
+
+      live "/audit_logs", AuditLogLive.Admin.Index, :index
     end
   end
 

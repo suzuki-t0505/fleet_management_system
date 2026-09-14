@@ -7,6 +7,8 @@ defmodule CoreAppWeb.Layouts do
 
   alias CoreApp.Accounts.Scope
 
+  alias CoreAppWeb.UserLive.Labels
+
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
   # skeleton of your application, namely HTML headers
@@ -96,7 +98,7 @@ defmodule CoreAppWeb.Layouts do
         <div :if={@current_scope && @current_scope.user} class="border-t border-hairline pt-3">
           <p class="text-body-sm truncate">{@current_scope.user.name}</p>
           <p class="text-caption text-ink-muted truncate">
-            {office_name(@current_scope)} ／ {role_label(@current_scope.role)}
+            {office_name(@current_scope)} ／ {Labels.role(@current_scope.role)}
           </p>
           <div class="mt-2 flex gap-2">
             <.link
@@ -149,21 +151,22 @@ defmodule CoreAppWeb.Layouts do
   defp nav_items(scope) do
     base = [
       %{label: "ダッシュボード", icon: "hero-home", path: "/"},
-      %{label: "運行日報", icon: "hero-document-text", path: nil},
+      %{label: "運行日報", icon: "hero-document-text", path: operation_reports_path(scope)},
       %{label: "事故・ヒヤリ", icon: "hero-exclamation-triangle", path: nil},
       %{label: "車両", icon: "hero-truck", path: vehicles_path(scope)}
     ]
 
     manager = [
       %{label: "運転者", icon: "hero-identification", path: "/management/drivers"},
-      %{label: "点検整備・期限", icon: "hero-wrench-screwdriver", path: nil},
+      %{label: "点検整備", icon: "hero-wrench-screwdriver", path: "/management/maintenances"},
+      %{label: "期限アラート", icon: "hero-bell-alert", path: "/management/alerts"},
       %{label: "集計", icon: "hero-chart-bar", path: nil}
     ]
 
     admin = [
-      %{label: "ユーザー", icon: "hero-users", path: nil},
-      %{label: "拠点", icon: "hero-building-office", path: nil},
-      %{label: "監査ログ", icon: "hero-clipboard-document-list", path: nil}
+      %{label: "ユーザー", icon: "hero-users", path: "/management/users"},
+      %{label: "拠点", icon: "hero-building-office", path: "/management/offices"},
+      %{label: "監査ログ", icon: "hero-clipboard-document-list", path: "/management/audit_logs"}
     ]
 
     cond do
@@ -173,6 +176,10 @@ defmodule CoreAppWeb.Layouts do
     end
   end
 
+  defp operation_reports_path(scope) do
+    if Scope.manager?(scope), do: "/management/operation_reports", else: "/operation_reports"
+  end
+
   # 運行管理者・管理者は台帳（編集可）、一般利用者は参照専用の画面へ遷移する
   defp vehicles_path(scope) do
     if Scope.manager?(scope), do: "/management/vehicles", else: "/vehicles"
@@ -180,11 +187,6 @@ defmodule CoreAppWeb.Layouts do
 
   defp office_name(%{user: %{office: %{name: name}}}), do: name
   defp office_name(_scope), do: "-"
-
-  defp role_label(:admin), do: "管理者"
-  defp role_label(:manager), do: "運行管理者"
-  defp role_label(:member), do: "一般利用者"
-  defp role_label(_role), do: "-"
 
   @doc """
   Shows the flash group with standard titles and content.

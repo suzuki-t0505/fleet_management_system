@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>要求内容 - 運行日報</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:900px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  .pill { display:inline-block; border-radius:9999px; padding:4px 10px; font-size:12px; font-weight:600; color:#fff; }
+  .p0 { background:var(--accent-orange); } .p1 { background:var(--primary); }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260913-operation-reports</div>
+<h1>要求内容：運行日報</h1>
+<p style="color:var(--ink-muted)">
+  対象機能: <strong>F-4 運行日報・走行記録</strong>（<a href="../../docs/product-requirements.md" style="color:var(--primary)">product-requirements.md</a> /
+  <a href="../../docs/functional-design.md" style="color:var(--primary)">functional-design.md</a> 4.3・5.1・6.3）
+</p>
+
+<h2>1. 背景</h2>
+<div class="card">
+  <p>本システムの中核機能。プロダクト要求の主要KPI「運行日報の当日入力率95%以上」「運行管理者の日報関連作業時間 60分→15分以下」は
+  この機能が担う。紙の日報とExcel転記をなくすことが目的である。</p>
+  <p>車両台帳（F-2）・運転者台帳（F-3）が揃い、日報の必須項目（車両・運転者）を選択できる状態になった。</p>
+</div>
+
+<h2>2. 目的</h2>
+<ul>
+  <li>運転者がスマートフォンから当日中に日報を入力・提出できる状態にする</li>
+  <li>運行管理者が転記作業なしに日報を確認・承認できる状態にする</li>
+  <li>走行距離をオドメーターから自動計算し、手入力による誤りと手間をなくす</li>
+  <li>給油記録を日報に紐付け、燃費算出（F-7）のデータを蓄積する</li>
+</ul>
+
+<h2>3. 対象範囲</h2>
+<table>
+  <thead><tr><th style="width:48px">#</th><th style="width:100px">優先度</th><th>要求</th></tr></thead>
+  <tbody>
+    <tr><td>R-1</td><td><span class="pill p0">P0</span></td>
+      <td><strong>日報の作成・編集</strong>。必須項目（運行日・車両・運転者・出発日時・帰着日時・出発時オドメーター・帰着時オドメーター）と任意項目（主な行き先・荷種・休憩時間・備考）</td></tr>
+    <tr><td>R-2</td><td><span class="pill p0">P0</span></td>
+      <td><strong>走行距離の自動計算</strong>（V-12）。「帰着時 − 出発時」をシステムが算出し、手入力させない</td></tr>
+    <tr><td>R-3</td><td><span class="pill p0">P0</span></td>
+      <td><strong>入力検証と警告</strong>（V-9〜V-16）。日時の前後関係・オドメーターの逆転・前回記録との整合・運行日の未来日・休憩時間の上限。<strong>エラー（保存不可）と警告（保存可）を区別する</strong></td></tr>
+    <tr><td>R-4</td><td><span class="pill p0">P0</span></td>
+      <td><strong>給油記録</strong>。1件の日報に0件以上の給油（給油日時・給油量・金額・オドメーター）を紐付けて同時に保存する（V-16・V-17）</td></tr>
+    <tr><td>R-5</td><td><span class="pill p0">P0</span></td>
+      <td><strong>ステータス遷移</strong>（下書き→提出済み→承認済み／差戻し）。運転者は提出、運行管理者は承認・差戻し。差戻し理由は必須（V-19）</td></tr>
+    <tr><td>R-6</td><td><span class="pill p0">P0</span></td>
+      <td><strong>承認時の車両オドメーター更新</strong>（V-18）。より大きい値の場合のみ <code>vehicles.latest_odometer</code> を更新する</td></tr>
+    <tr><td>R-7</td><td><span class="pill p0">P0</span></td>
+      <td><strong>運転者向け画面</strong>（<code>/operation_reports</code>）。自分が運転者の日報のみ参照・編集でき、<strong>375pxで縦スクロールのみで提出まで完了できる</strong></td></tr>
+    <tr><td>R-8</td><td><span class="pill p0">P0</span></td>
+      <td><strong>運行管理者向け画面</strong>（<code>/management/operation_reports</code>）。期間・車両・運転者・ステータスで絞り込み、詳細から承認・差戻しを行う</td></tr>
+    <tr><td>R-9</td><td><span class="pill p0">P0</span></td>
+      <td><strong>編集可否の制御</strong>。提出済み・承認済みの日報は運転者が編集できない。差戻し後は編集できる</td></tr>
+    <tr><td>R-10</td><td><span class="pill p0">P0</span></td>
+      <td><strong>ダッシュボードの連携</strong>。運転者には未提出・差戻しの件数、運行管理者には未承認の件数を表示し、一覧へ遷移できるようにする</td></tr>
+    <tr><td>R-11</td><td><span class="pill p1">P1</span></td>
+      <td><strong>監査ログ</strong>。承認・差戻しを記録する（<code>functional-design.md</code> 9.4）</td></tr>
+    <tr><td>R-12</td><td><span class="pill p1">P1</span></td>
+      <td><strong>ナビゲーションの有効化</strong>。サイドバーの「運行日報」をロール別の遷移先で有効にする</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 対象外</h2>
+<div class="card">
+  <ul>
+    <li><strong>集計（月次走行距離・燃費）</strong> — 集計レポート（F-7）でまとめて実装する。本作業はデータの蓄積までとする</li>
+    <li><strong>CSV出力</strong> — 同上</li>
+    <li><strong>差戻し通知メール</strong> — Oban のジョブ実装と合わせて別作業（期限アラートと同時）</li>
+    <li><strong>拘束時間・休息期間のチェック</strong>（F-9） — Post-MVP</li>
+    <li><strong>デジタコ連携</strong>（F-11） — Post-MVP</li>
+    <li><strong>車両詳細・運転者詳細からの日報履歴表示</strong> — 表示側の実装は日報の一覧が固まってから別途行う</li>
+  </ul>
+</div>
+
+<h2>5. 完了条件</h2>
+<table>
+  <thead><tr><th style="width:48px">#</th><th>条件</th></tr></thead>
+  <tbody>
+    <tr><td>C-1</td><td><code>make check</code> がすべて成功する</td></tr>
+    <tr><td>C-2</td><td>運転者が日報を作成し、給油記録を1件付けて提出できる</td></tr>
+    <tr><td>C-3</td><td>走行距離が「帰着時−出発時」で自動表示され、手入力できない</td></tr>
+    <tr><td>C-4</td><td>帰着日時が出発日時より前の場合は保存できない（エラー表示）</td></tr>
+    <tr><td>C-5</td><td>オドメーターが逆転している場合、運転者は保存できず、運行管理者は備考を入力して保存できる</td></tr>
+    <tr><td>C-6</td><td>運行管理者が提出済みの日報を承認でき、承認後は運転者が編集できない</td></tr>
+    <tr><td>C-7</td><td>差戻し時に理由が必須で、差し戻された日報は運転者が編集・再提出できる</td></tr>
+    <tr><td>C-8</td><td>承認すると車両の最終オドメーターが更新される（より大きい値の場合のみ）</td></tr>
+    <tr><td>C-9</td><td>運転者は自分が運転者の日報のみ参照でき、他人の日報URLでは404になる</td></tr>
+    <tr><td>C-10</td><td>ダッシュボードに未提出・差戻し（運転者）／未承認（運行管理者）の件数が表示され、クリックで一覧に遷移する</td></tr>
+    <tr><td>C-11</td><td>375pxで、日報の新規作成から提出まで横スクロールなしに完了できる</td></tr>
+    <tr><td>C-12</td><td>日報と給油記録の保存が同一トランザクションで行われ、片方だけが残らない</td></tr>
+  </tbody>
+</table>
+
+<h2>6. 前提・制約</h2>
+<div class="card">
+  <ul>
+    <li>車両・運転者の選択肢は、廃車・退職者を除いた自拠点のものに限る（V-3・V-8）</li>
+    <li>運転者がログインしている場合、<code>current_scope.driver_id</code> から運転者を既定値にする</li>
+    <li>日時は UTC 保存・JST 表示。「当日」の判定は JST で行う</li>
+    <li>Context 関数は第1引数に <code>Accounts.Scope</code> を取り、絞り込みをクエリ層で行う</li>
+    <li>seeds に開発用の日報（各ステータス）を追加する</li>
+  </ul>
+  <div class="note">
+    <strong>ブランチ</strong>：<code>feature/operation-reports</code>（<code>feature/driver-registry</code> から分岐）。
+    先行ブランチは未マージ・未プッシュのため、その5コミットを含んだ状態で進める。
+  </div>
+</div>
+
+</main>
+</body>
+</html>

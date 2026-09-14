@@ -68,6 +68,20 @@ defmodule CoreApp.Accounts.User do
   end
 
   @doc """
+  アカウントの状態を返します。表示とバッジの出し分けに使います。
+
+  ```elixir
+  iex> status(%User{active: true, locked_until: nil})
+  :active
+  ```
+  """
+  def status(%__MODULE__{active: false}), do: :inactive
+
+  def status(%__MODULE__{} = user) do
+    if locked?(user), do: :locked, else: :active
+  end
+
+  @doc """
   アカウントがロック中かどうかを返します。
   """
   def locked?(%__MODULE__{locked_until: nil}), do: false

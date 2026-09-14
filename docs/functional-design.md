@@ -120,12 +120,15 @@ URL は [coding-rules.md](coding-rules.md) 8.4 に従い、一般利用者向け
 | 日報 詳細・承認 | `/management/operation_reports/:id` | admin / manager |
 | 点検整備記録 一覧 | `/management/maintenances` | admin / manager |
 | 点検整備記録 登録・編集 | `/management/maintenances/new`, `/management/maintenances/:id/edit` | admin / manager |
+| 点検整備記録 詳細 | `/management/maintenances/:id` | admin / manager |
 | 期限アラート一覧 | `/management/alerts` | admin / manager |
 | 事故・ヒヤリ 一覧 | `/management/incidents` | admin / manager |
 | 事故・ヒヤリ 詳細・分析・承認 | `/management/incidents/:id` | admin / manager |
 | 集計レポート | `/management/reports` | admin / manager |
-| 拠点一覧・登録・編集 | `/management/offices` 配下 | admin |
-| ユーザー一覧・登録・編集 | `/management/users` 配下 | admin |
+| 拠点一覧 | `/management/offices` | admin |
+| 拠点 登録・編集 | `/management/offices/new`, `/management/offices/:id/edit` | admin |
+| ユーザー一覧 | `/management/users` | admin |
+| ユーザー 登録・編集 | `/management/users/new`, `/management/users/:id/edit` | admin |
 | 監査ログ一覧 | `/management/audit_logs` | admin |
 
 `:id` を含むパスは具体パスより後に定義する。
@@ -352,11 +355,14 @@ erDiagram
 | alert_type | string | NN | `inspection` / `liability_insurance` / `voluntary_insurance` / `periodic_3m` / `periodic_12m` / `license` |
 | deadline_on | date | NN | 期限日 |
 | notify_stage | string | NN | `d60` / `d30` / `d7` / `d0` / `overdue` |
+| notified_on | date | NN | 通知日（JST） |
 | sent_at | utc_datetime | | 送信日時 |
 | status | string | NN | `sent` / `failed` |
 | error_message | text | | 失敗理由 |
 
-ユニーク制約: `(target_type, target_id, alert_type, deadline_on, notify_stage)` — 同一段階の重複送信を防ぐ
+ユニーク制約: `(target_type, target_id, alert_type, deadline_on, notify_stage, notified_on)` — 同一段階の重複送信を防ぐ。
+`d60` 〜 `d0` は残日数がその値になる日が1日しかないため、`notified_on` を含めても「1段階＝1通」は変わらない。
+`overdue` だけは7日ごとに再送するため、通知日で行を分ける必要がある
 
 #### audit_logs（監査ログ）
 
@@ -412,6 +418,20 @@ stateDiagram-v2
 
 ## 6. 業務ルール・バリデーション
 
+### 6.0 拠点・ユーザー（F-1）
+
+| # | ルール | エラー時の挙動 |
+|---|-------|--------------|
+| V-29 | `offices.code` は全社で一意 | フォーム上にエラーを表示し保存しない |
+| V-30 | 拠点の物理削除は行わない。`active = false` で運用し、無効な拠点は車両・運転者・ユーザーの拠点の選択肢から除外する | 削除ボタンを提供しない |
+| V-31 | `users.email` は全社で一意。**管理者は編集画面でメールアドレスを変更できない**（変更は本人が設定画面から確認メール経由で行う） | 登録時のみ入力可。編集画面では読み取り専用 |
+| V-32 | 管理者は**自分自身のロール変更・無効化ができない** | 保存不可。画面でも該当項目を無効化する。管理画面に誰も入れなくなることを防ぐため |
+| V-33 | 無効化した利用者はログインできない。作成済みの日報・記録は保持する | ログイン時に拒否する |
+
+アカウントの発行時にパスワードは設定せず、**ログインリンク**を送って本人に設定させる。
+管理者は同じリンクをいつでも再送でき、ログイン失敗によるロックも解除できる。
+利用者の登録・更新は監査ログに記録し、**ロールが変わる更新は `role_change`** として記録する。
+
 ### 6.1 車両（F-2）
 
 | # | ルール | エラー時の挙動 |
@@ -441,9 +461,12 @@ stateDiagram-v2
 | V-9 | `returned_at` > `departed_at` | 保存不可・フィールド直下にエラー |
 | V-10 | `end_odometer` >= `start_odometer` | 警告を表示。運行管理者は備考を入力して保存続行可、運転者は保存不可 |
 | V-11 | `start_odometer` >= 同一車両の直近日報の `end_odometer` | 警告を表示（保存は続行可）。備考の入力を促す |
-| V-12 | `distance_km` は保存時に `end_odometer - start_odometer` で算出。手入力は不可 | 入力欄は読み取り専用 |
+| V-12 | `distance_km` は保存時に `end_odometer - start_odometer` で算出。手入力は不可 | 入力欄は読み取り専用。オドメーターが逆転している場合は**0kmとして記録**し、集計に負の距離が混入しないようにする |
 | V-13 | 同一車両・同一時間帯の日報が既に存在する場合は警告 | 重複の可能性を示す警告バナー（保存は続行可） |
 | V-14 | `operation_date` は未来日を登録できない | 保存不可 |
+| V-14-2 | `operation_date` は出発日または帰着日（JST）と一致する | 保存不可。日跨ぎ運行を許容するため両方を認める |
+| V-14-3 | 日報の拠点は**車両の配置拠点**に従う（作成者の拠点ではない） | 管理者が代理入力しても、その車両の拠点の日報として扱う。管理者以外は自拠点の車両しか選べない |
+| V-14-4 | 給油日時は出発日時から帰着日時の範囲内 | 保存不可 |
 | V-15 | `rest_minutes` は 0 以上、運行時間（帰着−出発）未満 | 保存不可 |
 | V-16 | 給油記録の `liters` は 0 より大きい | 保存不可 |
 | V-17 | 日報と給油記録の保存は同一トランザクションで行う | 一方が失敗した場合は全件ロールバック |
@@ -458,6 +481,8 @@ stateDiagram-v2
 | V-21 | `category = periodic_3m` / `periodic_12m` の登録時、`next_scheduled_on` を必須とし、車両の次回点検予定日を更新する | 未入力なら保存不可 |
 | V-22 | `performed_on` は未来日を登録できない | 保存不可 |
 | V-23 | `odometer` は当該車両の `latest_odometer` を下回る場合に警告 | 警告表示（保存は続行可） |
+| V-23-2 | `next_scheduled_on` は `performed_on` 以降 | 保存不可。過去日で車両の期限を巻き戻さないため |
+| V-23-3 | 記録の拠点は**車両の配置拠点**に従う（登録者の拠点ではない） | 管理者が代理登録しても、その車両の拠点の記録として扱う。管理者以外は自拠点の車両しか選べない |
 
 ### 6.5 事故・ヒヤリ（F-6）
 
@@ -490,7 +515,7 @@ stateDiagram-v2
 
 1. 毎日 07:00 (JST) に定時実行する
 2. 対象レコードを走査し、`deadline_on - 当日` が 60 / 30 / 7 / 0 日、および負数（超過）のものを抽出
-3. `alert_notifications` に同一 `(target, alert_type, deadline_on, notify_stage)` の `status = sent` が存在する場合はスキップ
+3. 送信済みのものはスキップする。`d60` 〜 `d0` は同一 `(target, alert_type, deadline_on, notify_stage)` の `status = sent` が1件でもあれば送らない。`overdue` は直近7日以内に `sent` があれば送らない
 4. 通知先を決定する
    - 対象の所属拠点の `manager` 全員
    - 全 `admin`
@@ -499,6 +524,10 @@ stateDiagram-v2
 7. ジョブ自体が異常終了した場合は、全 `admin` にエラー通知を送る
 
 `overdue` は期限超過中の毎日ではなく、**超過後7日ごと**に通知する（通知過多を避けるため）。
+超過1日目・2日目には送らず、超過7日目・14日目…に送る。
+
+判定と送信はジョブを分ける。`DeadlineAlertWorker`（毎日07:00）は対象の抽出とエンキューだけを行い、
+`AlertMailWorker` が1アラート＝1通を送って結果を記録する。1通の失敗が他のアラートを止めない。
 
 ### 7.3 メール仕様
 
@@ -570,7 +599,15 @@ stateDiagram-v2
 | 運行日報 | 承認・差戻し |
 | 事故・ヒヤリ | 承認・全社共有設定の変更 |
 
-### 9.5 表示規約
+### 9.5 日時の入力
+
+`datetime-local` の入力欄は、利用者が**JSTで入力する**前提とする。受け取った値（タイムゾーンを持たない文字列）は
+`Utils.ConvertDatetime.parse_input/1` でUTCに変換してから保存し、フォームに表示する際は
+`to_input_value/1` でJSTに戻す。
+
+タイムゾーン付きの文字列（`Z`・オフセット）は変換しない。APIやテストからUTCで渡された値を二重変換しないためである。
+
+### 9.6 表示規約
 
 | 項目 | 形式 |
 |------|------|
@@ -581,7 +618,7 @@ stateDiagram-v2
 | 給油量 | `12.34 L`（小数第2位） |
 | 空値 | `-` |
 
-### 9.6 エラー表示
+### 9.7 エラー表示
 
 | 種別 | 挙動 |
 |------|------|
@@ -590,13 +627,13 @@ stateDiagram-v2
 | 存在しないID | 404画面 |
 | 保存失敗 | flash でエラーを表示し、入力値を保持したままフォームに戻す |
 
-### 9.7 UIデザイン
+### 9.8 UIデザイン
 
 画面の配色・タイポグラフィ・角丸・余白・コンポーネントの見た目は [DESIGN-notion.md](DESIGN-notion.md) に従う。本書は**何を表示するか**のみを定義し、**どう見せるか**は定義しない。
 
 ステータスバッジ（日報・車両・事故のステータス、期限の残日数）の配色は [architecture.md](architecture.md) 4.8 の対応表に従う。
 
-### 9.8 レスポンシブ
+### 9.9 レスポンシブ
 
 | 画面 | 対応方針 |
 |------|---------|

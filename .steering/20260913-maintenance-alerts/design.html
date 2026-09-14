@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設計 - 点検整備・期限アラート</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39; --accent-orange-deep:#c4421a;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:980px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  h3 { font-size:19px; font-weight:600; margin:24px 0 8px; }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  pre { background:var(--surface); border:1px solid var(--hairline); border-radius:8px; padding:16px; overflow-x:auto; font-size:13px; line-height:1.6; }
+  pre code { background:none; padding:0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  .warn { border-left:3px solid var(--accent-orange); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  ul { padding-left:20px; } li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260913-maintenance-alerts</div>
+<h1>設計：点検整備・期限アラート</h1>
+<p style="color:var(--ink-muted)">
+  <a href="requirements.html" style="color:var(--primary)">requirements.html</a> の要求を実装に落とす。
+  規範は <a href="../../docs/coding-rules.md" style="color:var(--primary)">coding-rules.md</a> と
+  <a href="../../docs/DESIGN-notion.md" style="color:var(--primary)">DESIGN-notion.md</a>。
+</p>
+
+<h2>1. 全体構成</h2>
+<div class="card">
+<p>集約を2つ追加する。<strong>点検整備（書き込み中心）</strong>と<strong>期限アラート（読み取り＋通知ログ）</strong>は
+ライフサイクルが異なるため、functional-design 4.1 のとおり別 Context にする。</p>
+<pre><code>lib/core_app/
+├── maintenances.ex                 # 点検整備 Context
+├── maintenances/maintenance.ex
+├── alerts.ex                       # 期限判定・通知ログ Context
+├── alerts/alert_notification.ex    # 通知ログ（スキーマ）
+├── alerts/deadline.ex              # 期限1件を表す値オブジェクト（スキーマではない）
+├── alerts/alert_notifier.ex        # メール組み立て（Swoosh）
+└── workers/
+    ├── deadline_alert_worker.ex    # cron: 判定してエンキューするだけ
+    └── alert_mail_worker.ex        # 1通=1ジョブ。送信と結果記録
+
+lib/core_app_web/live/
+├── maintenance_live/{labels.ex, manager/{index,form,show}.ex}
+└── alert_live/manager/index.ex</code></pre>
+</div>
+
+<h2>2. データベース</h2>
+
+<h3>2.1 maintenances</h3>
+<p>functional-design 4.3 の定義どおり。<code>on_delete: :restrict</code>、主キーは ULID。</p>
+<table>
+  <thead><tr><th style="width:220px">インデックス</th><th>目的</th></tr></thead>
+  <tbody>
+    <tr><td><code>(vehicle_id, performed_on)</code></td><td>車両詳細の履歴・車両絞り込み</td></tr>
+    <tr><td><code>(office_id, performed_on)</code></td><td>一覧の既定並び（拠点スコープ + 実施日降順）</td></tr>
+    <tr><td><code>(category)</code></td><td>区分の絞り込みと整備費の種別内訳（F-7）</td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 alert_notifications</h3>
+<table>
+  <thead><tr><th style="width:200px">カラム</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>target_type</code> / <code>target_id</code></td><td><code>vehicle</code> / <code>driver</code> と対象ID（ポリモーフィックのため FK は張らない）</td></tr>
+    <tr><td><code>alert_type</code></td><td>6種（<code>inspection</code> / <code>liability_insurance</code> / <code>voluntary_insurance</code> / <code>periodic_3m</code> / <code>periodic_12m</code> / <code>license</code>）</td></tr>
+    <tr><td><code>deadline_on</code> / <code>notify_stage</code></td><td>期限日と段階（<code>d60</code> / <code>d30</code> / <code>d7</code> / <code>d0</code> / <code>overdue</code>）</td></tr>
+    <tr><td><code>notified_on</code></td><td><strong>通知日（JST）</strong>。下記の設計判断で追加</td></tr>
+    <tr><td><code>sent_at</code> / <code>status</code> / <code>error_message</code></td><td>送信日時・<code>sent</code> / <code>failed</code>・失敗理由</td></tr>
+  </tbody>
+</table>
+
+<div class="warn">
+<strong>設計判断 D-1：ユニーク制約に <code>notified_on</code> を加える</strong><br>
+functional-design 4.3 のユニーク制約は <code>(target_type, target_id, alert_type, deadline_on, notify_stage)</code> だが、
+これでは 7.2 の「超過は<strong>7日ごと</strong>に通知する」が実現できない（<code>overdue</code> は1行しか入らない）。
+そこで制約を <code>(target_type, target_id, alert_type, deadline_on, notify_stage, notified_on)</code> とする。<br>
+<code>d60</code> 〜 <code>d0</code> は残日数がその値になる日が1日しかないため、制約の強さは実質変わらない（同日再実行・Oban リトライの二重送信は従来どおり防げる）。
+<strong>functional-design.md 4.3 / 7.2 を実装に合わせて更新する。</strong>
+</div>
+
+<h2>3. ドメイン層</h2>
+
+<h3>3.1 Maintenance スキーマ</h3>
+<table>
+  <thead><tr><th style="width:80px">#</th><th>ルール</th><th style="width:200px">扱い</th></tr></thead>
+  <tbody>
+    <tr><td>V-20</td><td><code>category = inspection</code> は <code>next_scheduled_on</code>（新しい車検満了日）が必須</td><td>changeset でエラー</td></tr>
+    <tr><td>V-21</td><td><code>category = periodic_3m / periodic_12m</code> は <code>next_scheduled_on</code> が必須</td><td>changeset でエラー</td></tr>
+    <tr><td>V-22</td><td><code>performed_on</code> は未来日不可</td><td>changeset でエラー</td></tr>
+    <tr><td>追加</td><td><code>next_scheduled_on</code> は <code>performed_on</code> 以降</td><td>changeset でエラー（過去の期限で台帳を巻き戻さないため）</td></tr>
+    <tr><td>V-23</td><td><code>odometer</code> が車両の <code>latest_odometer</code> 未満</td><td><strong>警告</strong>。Context の <code>warnings/2</code> が返す（他レコード参照が要るため changeset に置かない）</td></tr>
+  </tbody>
+</table>
+
+<h3>3.2 Maintenances Context</h3>
+<pre><code>list_maintenances(scope, params)    # 期間・車両・区分・拠点で絞り込み、実施日の降順
+all_maintenances_for_vehicle(scope, vehicle_id, limit)  # 車両詳細の履歴（直近N件）
+get_maintenance!(scope, id)
+create_maintenance(scope, attrs, opts)  # Multi: 記録 → 車両の期限更新 → 監査ログ
+update_maintenance(scope, maintenance, attrs, opts)
+change_maintenance(maintenance, scope, attrs)
+warnings(scope, changeset)
+count_maintenances_by_category(scope)</code></pre>
+<p>拠点は<strong>車両の配置拠点に従う</strong>（日報の V-14-3 と同じ考え方）。管理者が代理登録しても車両の拠点の記録になる。
+管理者以外は自拠点の車両しか選べないため、<code>validate_office_scope/2</code> で弾く。</p>
+
+<div class="note">
+<strong>設計判断 D-2：期限更新は <code>Multi.run</code> で記録と同一トランザクション</strong>（V-20・V-21）。<br>
+更新先は <code>category</code> で決まる（<code>inspection</code> → <code>inspection_expires_on</code>、<code>periodic_3m</code> → <code>next_periodic_3m_on</code>、
+<code>periodic_12m</code> → <code>next_periodic_12m_on</code>）。それ以外の区分は車両を触らない。<br>
+編集時も同じ関数を通す。ただし<strong>区分が変わった場合に旧フィールドを戻すことはしない</strong>（巻き戻しの正解が決まらないため）。
+編集で期限を直したいときは車両台帳から直接直す運用とし、画面にその旨を注記する。
+</div>
+
+<h3>3.3 Alerts Context</h3>
+<p>期限は車両・運転者の<strong>列を横断した仮想的な一覧</strong>である。実体テーブルを持たないため、
+6本のクエリを <code>union_all</code> し、<code>subquery</code> で包んでから並べ替え・ページネーションする。
+メモリ上で全件展開しないため、coding-rules 6章のページネーション要件を満たす。</p>
+<pre><code># 1本ぶんのイメージ（車両の5種 + 運転者の1種を union_all する）
+from v in Vehicle,
+  where: v.status != :scrapped,
+  where: not is_nil(field(v, ^column)) and field(v, ^column) &lt;= ^horizon_date,
+  select: %{
+    target_type: type(^"vehicle", :string), target_id: v.id,
+    target_name: v.plate_number, office_id: v.office_id,
+    alert_type: type(^alert_type, :string), deadline_on: field(v, ^column)
+  }</code></pre>
+<pre><code>list_deadlines(scope, params)       # 一覧画面。残日数の昇順、Pagination
+count_deadlines_by_urgency(scope)   # ダッシュボード用 %{overdue: n, within_30: n}
+all_notifiable_deadlines(today)     # ジョブ用。スコープなし・全拠点
+notified?(deadline, stage, today)   # 送信済み判定（7.2 手順3）
+record_sent/record_failed           # 通知ログの upsert
+</code></pre>
+<p>取得結果は <code>%CoreApp.Alerts.Deadline{}</code>（値オブジェクト）に詰め替える。
+Web 層とワーカーが同じ構造体を見るため、表示と通知で残日数の計算がずれない。</p>
+
+<h3>3.4 段階の判定</h3>
+<table>
+  <thead><tr><th style="width:160px">残日数</th><th style="width:140px">notify_stage</th><th>備考</th></tr></thead>
+  <tbody>
+    <tr><td>60 / 30 / 7 / 0</td><td><code>d60</code> / <code>d30</code> / <code>d7</code> / <code>d0</code></td><td>その日ちょうどのみ</td></tr>
+    <tr><td>-7, -14, -21, …</td><td><code>overdue</code></td><td>7の倍数日だけ通知（超過1日目は送らない）</td></tr>
+    <tr><td>上記以外</td><td>なし</td><td>通知しない（一覧には表示する）</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 非同期処理</h2>
+<table>
+  <thead><tr><th style="width:220px">ワーカー</th><th>責務</th></tr></thead>
+  <tbody>
+    <tr><td><code>DeadlineAlertWorker</code><br><code>queue: :alerts</code></td>
+      <td>cron <code>0 22 * * *</code>（UTC＝JST 07:00）。全拠点を走査し、段階に該当し、かつ未送信のものだけ <code>AlertMailWorker</code> をエンキューする。<strong>メールは送らない</strong>。最終試行で異常終了した場合は全管理者にエラー通知してから再raiseする</td></tr>
+    <tr><td><code>AlertMailWorker</code><br><code>queue: :mailers</code></td>
+      <td>1アラート＝1ジョブ＝1通。宛先（対象拠点の運行管理者全員＋全管理者）を解決し、送信結果を <code>alert_notifications</code> に <code>sent</code> / <code>failed</code> で記録する。送信済みなら何もしない</td></tr>
+  </tbody>
+</table>
+<div class="note">
+<strong>設計判断 D-3：通知ログは「アラート1件＝1行」、宛先は1通の <code>to</code> にまとめる。</strong><br>
+<code>alert_notifications</code> に宛先カラムが無く、ユニーク制約も宛先を含まないため。
+「1通の失敗が全体を止めない」という architecture 4.3 の要求は、アラート単位でジョブを分けることで満たす。
+</div>
+<p>冪等性は次の2重で担保する。① エンキュー前の <code>notified?</code> による送信済みスキップ　
+② <code>alert_notifications</code> のユニーク制約（<code>on_conflict</code> で上書き）。Oban のリトライで二重送信しない。</p>
+
+<h3>4.1 メール仕様（functional-design 7.3）</h3>
+<table>
+  <thead><tr><th style="width:120px">種別</th><th>件名</th></tr></thead>
+  <tbody>
+    <tr><td>期限前</td><td><code>[車両管理] {拠点名} {対象名} の{期限種別}が残り{N}日です</code></td></tr>
+    <tr><td>超過</td><td><code>[車両管理][超過] {拠点名} {対象名} の{期限種別}が期限切れです</code></td></tr>
+  </tbody>
+</table>
+<p>本文に対象・期限種別・期限日・残日数と詳細画面の URL を入れる。URL は
+<code>CoreAppWeb.Endpoint.url()</code> と <code>~p</code> で組み立て、文字列連結しない。</p>
+
+<h2>5. 画面</h2>
+<table>
+  <thead><tr><th style="width:280px">URL</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>/management/maintenances</code></td>
+      <td>一覧。キーワード（車両番号・業者）／期間／車両／区分／拠点（管理者のみ）で絞り込み。実施日の降順、50件ページング</td></tr>
+    <tr><td><code>/management/maintenances/new</code><br><code>/management/maintenances/:id/edit</code></td>
+      <td>登録・編集。区分によって「次回予定日」のラベルと必須表示を切り替える（車検→「新しい車検満了日 *」）。警告バナーは保存を止めない</td></tr>
+    <tr><td><code>/management/maintenances/:id</code></td>
+      <td>詳細。車両詳細・編集への導線</td></tr>
+    <tr><td><code>/management/alerts</code></td>
+      <td>期限アラート一覧。対象・期限種別・期限日・残日数・拠点。残日数の昇順。<code>within</code>（超過のみ/7/30/60）・期限種別・拠点で絞り込み</td></tr>
+  </tbody>
+</table>
+<p>配色は既存の <code>&lt;.deadline_badge&gt;</code> に揃える（超過=<code>accent-orange-deep</code> / 7日以内=<code>accent-orange</code> / 30日以内=<code>accent-purple-deep</code> / それ以外=無色）。
+DESIGN-notion.md に定義済みのトークンのみを使い、新しい色は増やさない。</p>
+<p>サイドナビの「点検整備・期限」を実装済みにし、点検整備一覧とアラート一覧の2項目に分ける。
+ダッシュボードには運行管理者・管理者向けに「期限超過」「30日以内」のカードを追加する。
+車両詳細の「履歴」プレースホルダを点検整備履歴（直近5件）に差し替える。</p>
+
+<h2>6. テスト方針</h2>
+<table>
+  <thead><tr><th style="width:260px">対象</th><th>観点</th></tr></thead>
+  <tbody>
+    <tr><td><code>Maintenance</code> changeset</td><td>V-20・V-21・V-22・次回予定日の前後関係をエラー1件ずつ</td></tr>
+    <tr><td><code>Maintenances</code> Context</td><td>期限更新（区分別）・拠点スコープ・警告（V-23）・監査ログの記録</td></tr>
+    <tr><td><code>Alerts</code> Context</td><td>6種の抽出・廃車/退職の除外・残日数順・スコープ境界・段階判定</td></tr>
+    <tr><td>ワーカー</td><td><code>Oban.Testing</code> で手動実行。<strong>2回実行しても2通目が出ない</strong>こと、超過が7日ごとであること、<code>failed</code> が翌日再送対象になること</td></tr>
+    <tr><td>LiveView</td><td>一覧の絞り込み・登録で車両の期限が更新される・他拠点が見えない</td></tr>
+  </tbody>
+</table>
+<p>メールは <code>Swoosh.Adapters.Test</code> の <code>assert_email_sent</code> で検証する（自作モジュールは mock しない）。</p>
+</main>
+</body>
+</html>

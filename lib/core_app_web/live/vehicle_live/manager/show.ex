@@ -2,18 +2,22 @@ defmodule CoreAppWeb.VehicleLive.Manager.Show do
   @moduledoc false
   use CoreAppWeb, :live_view
 
+  alias CoreApp.Maintenances
   alias CoreApp.Vehicles
 
+  alias CoreAppWeb.MaintenanceLive.Labels, as: MaintenanceLabels
   alias CoreAppWeb.VehicleLive.Labels
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    vehicle = Vehicles.get_vehicle!(socket.assigns.current_scope, id)
+    scope = socket.assigns.current_scope
+    vehicle = Vehicles.get_vehicle!(scope, id)
 
     {:ok,
      socket
      |> assign(vehicle: vehicle)
-     |> assign(page_title: vehicle.plate_number)}
+     |> assign(page_title: vehicle.plate_number)
+     |> assign(maintenances: Maintenances.all_maintenances_for_vehicle(scope, vehicle.id))}
   end
 
   @impl true
@@ -92,8 +96,45 @@ defmodule CoreAppWeb.VehicleLive.Manager.Show do
           </p>
         </.section_card>
 
+        <.section_card title="点検整備履歴">
+          <:actions>
+            <.link
+              navigate={~p"/management/maintenances/new?#{%{"vehicle_id" => @vehicle.id}}"}
+              class="text-button rounded-full bg-primary px-4 py-2 text-on-primary hover:bg-primary-active"
+            >
+              記録を登録
+            </.link>
+          </:actions>
+
+          <p :if={@maintenances == []} class="text-body-sm text-ink-muted">
+            点検整備記録がまだありません。
+          </p>
+
+          <div :if={@maintenances != []} class="space-y-4">
+            <.data_table id="vehicle-maintenances" rows={@maintenances}>
+              <:col :let={maintenance} label="実施日">
+                {format_date(maintenance.performed_on)}
+              </:col>
+              <:col :let={maintenance} label="区分">
+                {MaintenanceLabels.category(maintenance.category)}
+              </:col>
+              <:col :let={maintenance} label="実施業者">{maintenance.vendor}</:col>
+              <:col :let={maintenance} label="費用">
+                {MaintenanceLabels.cost(maintenance.cost_yen)}
+              </:col>
+            </.data_table>
+
+            <.link
+              navigate={~p"/management/maintenances?#{%{"vehicle_id" => @vehicle.id}}"}
+              class="text-body-sm text-primary hover:underline"
+            >
+              この車両の点検整備記録をすべて見る
+            </.link>
+          </div>
+        </.section_card>
+
         <.section_card title="履歴">
-          <.placeholder message="運行日報・点検整備記録・事故/ヒヤリ記録は、各機能の実装後にここへ表示されます。" />
+          <.placeholder message="運行日報・事故/ヒヤリ記録は、各機能の実装後にここへ表示されます。" />
         </.section_card>
       </div>
     </Layouts.app>
