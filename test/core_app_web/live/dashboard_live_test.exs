@@ -43,7 +43,8 @@ defmodule CoreAppWeb.DashboardLiveTest do
       {:ok, _lv, html} = live(conn, ~p"/")
 
       assert html =~ "運転者"
-      assert html =~ "点検整備・期限"
+      assert html =~ "点検整備"
+      assert html =~ "期限アラート"
       assert html =~ "運行管理者"
       refute html =~ "監査ログ"
     end

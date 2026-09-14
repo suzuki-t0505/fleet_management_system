@@ -6,7 +6,12 @@ defmodule CoreApp.Accounts do
   import Ecto.Query, warn: false
   alias CoreApp.Repo
 
-  alias CoreApp.Accounts.{User, UserToken, UserNotifier}
+  alias CoreApp.Accounts.{Scope, User, UserToken, UserNotifier}
+  alias CoreApp.AuditLogs
+  alias CoreApp.Utils.Pagination
+  alias Ecto.Multi
+
+  @resource_type "user"
 
   ## Database getters
 
@@ -59,6 +64,206 @@ defmodule CoreApp.Accounts do
 
   """
   def get_user!(<<_::208>> = id), do: Repo.get!(User, id)
+
+  @doc """
+  期限アラートの通知先となる利用者を返します。
+
+  対象拠点の運行管理者全員と、全拠点を見る管理者全員です（functional-design 7.2 手順4）。
+  無効化された利用者は含みません。
+
+  ```elixir
+  iex> all_alert_recipients(office_id)
+  [%User{role: :manager}, %User{role: :admin}]
+  ```
+  """
+  def all_alert_recipients(<<_::208>> = office_id) do
+    User
+    |> where([u], u.active)
+    |> where([u], u.role == :admin or (u.role == :manager and u.office_id == ^office_id))
+    |> order_by([u], asc: u.email)
+    |> Repo.all()
+  end
+
+  @doc """
+  有効な管理者をすべて返します。ジョブの異常終了の通知先に使います。
+  """
+  def all_admins do
+    User
+    |> where([u], u.active and u.role == :admin)
+    |> order_by([u], asc: u.email)
+    |> Repo.all()
+  end
+
+  @doc """
+  ページネーションに対応した利用者を取得します。メールアドレスの昇順で返します。
+
+  管理者だけが参照できます。
+
+  ## params
+  - `q` 検索ワード（氏名、メールアドレス）
+  - `office_id` 所属拠点
+  - `role` ロール
+  - `active` 有効フラグ。未指定時は有効な利用者のみ、`all` を指定すると無効を含む
+  - `page` / `page_size` ページネーション
+  """
+  def list_users(%Scope{role: :admin} = _scope, params \\ %{}) do
+    User
+    |> filter_by_office(params["office_id"])
+    |> filter_by_role(params["role"])
+    |> filter_by_active(params["active"])
+    |> search_users(params["q"])
+    |> order_by([u], asc: u.email)
+    |> preload([:office, :driver])
+    |> Pagination.paginate(params, Repo)
+  end
+
+  @doc """
+  管理画面用に、拠点と運転者を preload した利用者を取得します。
+  """
+  def get_user!(%Scope{role: :admin} = _scope, <<_::208>> = id) do
+    User
+    |> preload([:office, :driver])
+    |> Repo.get!(id)
+  end
+
+  @doc """
+  管理者がアカウントを発行します。監査ログを同一トランザクションで記録します。
+
+  パスワードは設定しません。発行後にログインリンクを送り、利用者自身が設定画面で
+  パスワードを設定します。
+  """
+  def register_user(%Scope{role: :admin} = scope, attrs \\ %{}, opts \\ []) do
+    changeset =
+      %User{}
+      |> User.email_changeset(attrs)
+      |> User.profile_changeset(attrs)
+
+    Multi.new()
+    |> Multi.insert(:user, changeset)
+    |> AuditLogs.record_multi(
+      :audit_log,
+      scope,
+      :create,
+      &{@resource_type, &1.user, changeset},
+      opts
+    )
+    |> Repo.transaction()
+    |> normalize_transaction()
+  end
+
+  @doc """
+  管理者が利用者の氏名・所属拠点・ロール・有効フラグを変更します。
+
+  ロールが変わる場合は `role_change` として監査ログに記録します。
+  管理者が自分自身のロールと有効フラグを変更することはできません（ロックアウトの防止）。
+  """
+  def update_user(%Scope{role: :admin} = scope, %User{} = user, attrs, opts \\ []) do
+    changeset =
+      user
+      |> User.profile_changeset(attrs)
+      |> reject_self_privilege_change(scope, user)
+
+    Multi.new()
+    |> Multi.update(:user, changeset)
+    |> AuditLogs.record_multi(
+      :audit_log,
+      scope,
+      action_for(changeset),
+      &{@resource_type, &1.user, changeset},
+      opts
+    )
+    |> Repo.transaction()
+    |> normalize_transaction()
+  end
+
+  @doc """
+  ログイン失敗によるアカウントのロックを管理者が解除します。
+  """
+  def unlock_user(%Scope{role: :admin} = scope, %User{} = user, opts \\ []) do
+    changeset = User.reset_failed_attempts_changeset(user)
+
+    Multi.new()
+    |> Multi.update(:user, changeset)
+    |> AuditLogs.record_multi(
+      :audit_log,
+      scope,
+      :update,
+      &{@resource_type, &1.user, changeset},
+      opts
+    )
+    |> Repo.transaction()
+    |> normalize_transaction()
+  end
+
+  @doc """
+  アカウント発行フォームのchangesetを取得します。
+
+  入力中は一意性を検証しません（保存時に検証します）。
+  """
+  def change_user_registration(%User{} = user, attrs \\ %{}) do
+    user
+    |> User.email_changeset(attrs, validate_unique: false)
+    |> User.profile_changeset(attrs)
+  end
+
+  @doc """
+  利用者の編集フォームのchangesetを取得します。メールアドレスは変更できません。
+  """
+  def change_user(%User{} = user, attrs \\ %{}) do
+    User.profile_changeset(user, attrs)
+  end
+
+  # ロールが変わったかどうかだけで操作の種別を決める。氏名とロールが同時に変わる場合も
+  # 「権限の変更」として追えるようにするため。
+  defp action_for(%Ecto.Changeset{changes: changes}) do
+    if Map.has_key?(changes, :role), do: :role_change, else: :update
+  end
+
+  # 最後の管理者が自分の権限を落とすと、誰も管理画面に入れなくなる。
+  defp reject_self_privilege_change(changeset, %Scope{user: %User{id: id}}, %User{id: id}) do
+    changeset
+    |> reject_change(:role)
+    |> reject_change(:active)
+  end
+
+  defp reject_self_privilege_change(changeset, _scope, _user), do: changeset
+
+  defp reject_change(%Ecto.Changeset{changes: changes} = changeset, field) do
+    if Map.has_key?(changes, field) do
+      Ecto.Changeset.add_error(changeset, field, "は自分自身では変更できません")
+    else
+      changeset
+    end
+  end
+
+  defp normalize_transaction({:ok, %{user: user}}), do: {:ok, user}
+  defp normalize_transaction({:error, :user, changeset, _changes}), do: {:error, changeset}
+
+  defp filter_by_office(query, office_id) when is_binary(office_id) and office_id != "" do
+    where(query, [u], u.office_id == ^office_id)
+  end
+
+  defp filter_by_office(query, _office_id), do: query
+
+  defp filter_by_role(query, role) when is_binary(role) and role != "" do
+    where(query, [u], u.role == ^role)
+  end
+
+  defp filter_by_role(query, _role), do: query
+
+  defp filter_by_active(query, "all"), do: query
+
+  defp filter_by_active(query, "false"), do: where(query, [u], u.active == false)
+
+  defp filter_by_active(query, _active), do: where(query, [u], u.active == true)
+
+  defp search_users(query, keyword) when is_binary(keyword) and keyword != "" do
+    pattern = "%#{String.trim(keyword)}%"
+
+    where(query, [u], ilike(u.name, ^pattern) or ilike(u.email, ^pattern))
+  end
+
+  defp search_users(query, _keyword), do: query
 
   ## User creation
 
@@ -263,8 +468,11 @@ defmodule CoreApp.Accounts do
     {:ok, query} = UserToken.verify_session_token_query(token)
 
     case Repo.one(query) do
-      {%User{} = user, token_inserted_at} -> {Repo.preload(user, :office), token_inserted_at}
-      other -> other
+      {%User{} = user, token_inserted_at} ->
+        {Repo.preload(user, [:office, :driver]), token_inserted_at}
+
+      other ->
+        other
     end
   end
 

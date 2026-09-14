@@ -16,3 +16,17 @@ Ready to run in production? Please [check our deployment guides](https://phoenix
 * Docs: https://phoenix.hexdocs.pm
 * Forum: https://elixirforum.com/c/phoenix-forum
 * Source: https://github.com/phoenixframework/phoenix
+
+## Docker push
+
+```bash
+docker build -t fleet-management-system --no-cache .
+docker tag fleet-management-system asia-northeast1-docker.pkg.dev/dulcet-radar-464207-v2/fleet-management-system/fleet-management-system:v1
+docker push asia-northeast1-docker.pkg.dev/dulcet-radar-464207-v2/fleet-management-system/fleet-management-system:v1
+```
+
+## Memo
+
+```bash
+docker compose exec db pg_dump --data-only --column-inserts -U postgres  -d core_app_dev > test.sql
+```

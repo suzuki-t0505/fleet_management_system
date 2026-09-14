@@ -199,11 +199,15 @@ Phoenix 1.8 の `current_scope` を採用し、認可の判断材料を1つの�
   user: %User{},        # ログインユーザー
   office_id: "01J...",  # 所属拠点ID
   role: :manager,       # :admin | :manager | :member
-  driver_id: "01J..."   # 紐付く運転者ID（member のとき）
+  driver_id: "01J..."   # 紐付く運転者ID（未紐付け・未preload は nil）
 }
 ```
 
 Context のクエリは `scope` に応じて条件を付与する。
+
+`driver_id` はセッション経由で取得した利用者（`:driver` を preload 済み）にのみ入る。
+preload していない `User` から `Scope.for_user/1` を呼んだ場合は `nil` になるため、
+運転者の特定が必須の処理ではセッション由来のスコープを使う。
 
 | role | 付与される条件 |
 |------|--------------|
@@ -268,10 +272,13 @@ MVP の機能にインスタンス横断のリアルタイム同期要件はな�
 |-------------|---------|------|
 | `0 22 * * *`（UTC / JST 07:00） | `DeadlineAlertWorker` | 期限対象を走査し、通知対象ごとに `AlertMailWorker` をエンキュー |
 
+`AlertMailWorker` は `mailers` キューで動き、1アラートにつき1通を対象拠点の運行管理者全員と全管理者へ送る。
+
 **ジョブ設計の約束**
 
 - `DeadlineAlertWorker` は判定のみを行い、**メール送信は1通=1ジョブ**に分割する（1通の失敗が全体を止めない）
-- 冪等性は `alert_notifications` のユニーク制約 `(target_type, target_id, alert_type, deadline_on, notify_stage)` で担保する。Oban のリトライで二重送信しない
+- 冪等性は `alert_notifications` のユニーク制約 `(target_type, target_id, alert_type, deadline_on, notify_stage, notified_on)` で担保する。Oban のリトライで二重送信しない。`notified_on`（通知日）を含めるのは、超過の再通知を7日ごとに行うため（[functional-design.md](functional-design.md) 4.3）
+- エンキュー自体の重複は `AlertMailWorker` の `unique`（20時間）でも防ぐ
 - `max_attempts: 5`、指数バックオフ。最終失敗時は `status = failed` を記録し、翌日の実行で再送対象に含める
 - ジョブ内で `Scope` を用いず、システム権限で全拠点を走査する（通知は横断処理のため）
 - Oban の実行履歴（`oban_jobs`）は7日で剪定する（`Oban.Plugins.Pruner`）

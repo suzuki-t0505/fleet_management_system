@@ -221,6 +221,7 @@ def create_vehicle(%Scope{} = scope, attrs)
 
 - DB・スキーマは `:utc_datetime`
 - 表示・入力の変換は `Utils.ConvertDatetime` に集約する
+- **`datetime-local` の入力値はJSTとして扱う**。Context で `parse_input/1` を通してからcastし、フォームには `to_input_value/1` で戻す
 - **「今日」の判定は JST で行う**（期限の残日数計算、運行日の未来日チェック）。`Date.utc_today()` をそのまま使わない
 
 ### 6.3 物理削除をしない
@@ -363,6 +364,7 @@ end
 | 期限アラートが飛ばない | Cloud Run がスケールゼロして Oban の cron が発火していない | min-instances = 1 と CPU always allocated を確認する |
 | メールが送れない | Cloud Run から SMTP ポートへ接続しようとしている | HTTP API のアダプタ（SendGrid）を使う |
 | 日付が1日ずれる | UTC のまま日付判定している | JST に変換してから日付を取り出す（6.2） |
+| フォームで入力した時刻が9時間ずれる | `datetime-local` の値（JST）をそのまま UTC として保存している | `Utils.ConvertDatetime.parse_input/1` で変換し、表示は `to_input_value/1` を使う（6.2） |
 | 一覧が遅い | インデックス未作成、または N+1 | 複合インデックスと `preload` を確認する |
 | `make check` が失敗する | `credo` 未導入 | `mix.exs` に追加する（4.1） |
 | レイアウトが極端に狭くなる・文字が縦一列になる | `@theme` に `--spacing-sm` などを定義し、`max-w-sm` 等の組み込みサイズ名を上書きした | 名前付き spacing トークンを削除し、numeric スケールを使う（6.9） |

@@ -3,10 +3,20 @@ defmodule CoreAppWeb.DashboardLive.Index do
   use CoreAppWeb, :live_view
 
   alias CoreApp.Accounts.Scope
+  alias CoreApp.Alerts
+  alias CoreApp.OperationReports
+
+  alias CoreAppWeb.UserLive.Labels
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "ダッシュボード")}
+    scope = socket.assigns.current_scope
+
+    {:ok,
+     socket
+     |> assign(page_title: "ダッシュボード")
+     |> assign(report_counts: OperationReports.count_reports_by_status(scope))
+     |> assign(deadline_counts: deadline_counts(scope))}
   end
 
   @impl true
@@ -18,16 +28,70 @@ defmodule CoreAppWeb.DashboardLive.Index do
           <p class="text-eyebrow text-ink-muted">ようこそ</p>
           <p class="text-heading-2 mt-1">{@current_scope.user.name} さん</p>
           <p class="text-body-sm text-ink-muted mt-2">
-            {role_label(@current_scope.role)} ／ {@current_scope.user.office.name}
+            {Labels.role(@current_scope.role)} ／ {@current_scope.user.office.name}
           </p>
         </section>
 
+        <div :if={!Scope.manager?(@current_scope)} class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <.count_card
+            label="未提出の日報"
+            count={count(@report_counts, :draft)}
+            path={~p"/operation_reports?#{%{"status" => "draft"}}"}
+            tone={if count(@report_counts, :draft) > 0, do: "text-accent-orange", else: "text-ink"}
+          />
+          <.count_card
+            label="差し戻された日報"
+            count={count(@report_counts, :rejected)}
+            path={~p"/operation_reports?#{%{"status" => "rejected"}}"}
+            tone={
+              if count(@report_counts, :rejected) > 0,
+                do: "text-accent-orange-deep",
+                else: "text-ink"
+            }
+          />
+        </div>
+
+        <div :if={Scope.manager?(@current_scope)} class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <.count_card
+            label="未承認の日報"
+            count={count(@report_counts, :submitted)}
+            path={~p"/management/operation_reports?#{%{"status" => "submitted"}}"}
+            tone={
+              if count(@report_counts, :submitted) > 0, do: "text-accent-orange", else: "text-ink"
+            }
+          />
+          <.count_card
+            label="差戻し中の日報"
+            count={count(@report_counts, :rejected)}
+            path={~p"/management/operation_reports?#{%{"status" => "rejected"}}"}
+            tone="text-ink"
+          />
+          <.count_card
+            label="今月の承認済み日報"
+            count={count(@report_counts, :approved)}
+            path={~p"/management/operation_reports?#{%{"status" => "approved"}}"}
+            tone="text-ink"
+          />
+        </div>
+
+        <div :if={Scope.manager?(@current_scope)} class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <.count_card
+            label="期限超過"
+            count={@deadline_counts.overdue}
+            path={~p"/management/alerts?#{%{"within" => "overdue"}}"}
+            tone={if @deadline_counts.overdue > 0, do: "text-accent-orange-deep", else: "text-ink"}
+          />
+          <.count_card
+            label="期限30日以内"
+            count={@deadline_counts.within_30}
+            path={~p"/management/alerts?#{%{"within" => "30"}}"}
+            tone={if @deadline_counts.within_30 > 0, do: "text-accent-orange", else: "text-ink"}
+          />
+        </div>
+
         <section class="rounded-lg border border-hairline bg-canvas-soft p-8 text-center">
           <p class="text-body-md text-ink-muted">
-            ダッシュボードの内容は準備中です。
-          </p>
-          <p :if={Scope.manager?(@current_scope)} class="text-body-sm text-ink-faint mt-2">
-            期限アラート・未承認日報の件数はこの画面に表示されます。
+            事故・ヒヤリの件数は、機能の実装後にここへ表示されます。
           </p>
         </section>
       </div>
@@ -35,7 +99,31 @@ defmodule CoreAppWeb.DashboardLive.Index do
     """
   end
 
-  defp role_label(:admin), do: "管理者"
-  defp role_label(:manager), do: "運行管理者"
-  defp role_label(:member), do: "一般利用者"
+  attr :label, :string, required: true
+  attr :count, :integer, required: true
+  attr :path, :string, required: true
+  attr :tone, :string, default: "text-ink"
+
+  defp count_card(assigns) do
+    ~H"""
+    <.link
+      navigate={@path}
+      class="block rounded-lg border border-hairline bg-surface p-6 hover:border-primary"
+    >
+      <p class="text-eyebrow text-ink-muted">{@label}</p>
+      <p class={["text-heading-1 mt-2", @tone]}>{@count}</p>
+    </.link>
+    """
+  end
+
+  defp count(counts, status), do: Map.get(counts, status, 0)
+
+  # 一般利用者は期限の管理対象ではないため、集計そのものを行わない
+  defp deadline_counts(scope) do
+    if Scope.manager?(scope) do
+      Alerts.count_deadlines_by_urgency(scope)
+    else
+      %{overdue: 0, within_30: 0}
+    end
+  end
 end

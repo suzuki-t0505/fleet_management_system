@@ -3,6 +3,7 @@ defmodule CoreApp.Accounts.User do
   use CoreApp.Schema
   import Ecto.Changeset
 
+  alias CoreApp.Drivers.Driver
   alias CoreApp.Offices.Office
 
   @roles ~w(admin manager member)a
@@ -22,6 +23,8 @@ defmodule CoreApp.Accounts.User do
     field :locked_until, :utc_datetime
 
     belongs_to(:office, Office)
+
+    has_one(:driver, Driver)
 
     timestamps(type: :utc_datetime)
   end
@@ -62,6 +65,20 @@ defmodule CoreApp.Accounts.User do
   """
   def reset_failed_attempts_changeset(user) do
     change(user, failed_attempts: 0, locked_until: nil)
+  end
+
+  @doc """
+  アカウントの状態を返します。表示とバッジの出し分けに使います。
+
+  ```elixir
+  iex> status(%User{active: true, locked_until: nil})
+  :active
+  ```
+  """
+  def status(%__MODULE__{active: false}), do: :inactive
+
+  def status(%__MODULE__{} = user) do
+    if locked?(user), do: :locked, else: :active
   end
 
   @doc """

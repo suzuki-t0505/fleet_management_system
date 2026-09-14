@@ -4,20 +4,42 @@ defmodule CoreAppWeb.StatusComponents do
 
   alias CoreApp.Utils.ConvertDatetime
 
-  @status_labels %{
+  @vehicle_statuses %{
     active: {"稼働中", "bg-accent-green"},
     maintenance: {"整備中", "bg-accent-teal"},
     idle: {"休車", "bg-ink-faint"},
     scrapped: {"廃車", "bg-ink-secondary"}
   }
 
+  @report_statuses %{
+    draft: {"下書き", "bg-ink-faint"},
+    submitted: {"提出済み", "bg-accent-orange"},
+    approved: {"承認済み", "bg-accent-green"},
+    rejected: {"差戻し", "bg-accent-orange-deep"}
+  }
+
+  @user_statuses %{
+    active: {"有効", "bg-accent-green"},
+    inactive: {"無効", "bg-ink-secondary"},
+    locked: {"ロック中", "bg-accent-orange-deep"}
+  }
+
+  @labels %{
+    vehicle: @vehicle_statuses,
+    operation_report: @report_statuses,
+    user: @user_statuses
+  }
+
   @doc """
-  車両ステータスのバッジを表示します。
+  ステータスのバッジを表示します。
+
+  `type` で対象のリソースを指定します（既定は車両）。
   """
   attr :status, :atom, required: true
+  attr :type, :atom, default: :vehicle, values: [:vehicle, :operation_report, :user]
 
   def status_badge(assigns) do
-    {label, color} = Map.fetch!(@status_labels, assigns.status)
+    {label, color} = @labels |> Map.fetch!(assigns.type) |> Map.fetch!(assigns.status)
     assigns = assign(assigns, label: label, color: color)
 
     ~H"""

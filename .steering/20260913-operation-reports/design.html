@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設計 - 運行日報</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-orange-deep:#793400;
+    --accent-green:#1aae39; --accent-teal:#2a9d99; --accent-purple-deep:#391c57; --accent-sky:#62aef0;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:980px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  h3 { font-size:20px; font-weight:600; margin:24px 0 8px; }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  pre { background:#fff; border:1px solid var(--hairline); border-radius:8px; padding:16px; overflow-x:auto; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-secondary); }
+  pre code { background:none; padding:0; }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+  .warn { border-left-color:var(--accent-orange); }
+  .tag { display:inline-block; border-radius:9999px; padding:2px 8px; font-size:12px; font-weight:600; color:#fff; }
+  .err { background:var(--accent-orange-deep); } .wrn { background:var(--accent-orange); }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260913-operation-reports</div>
+<h1>設計：運行日報</h1>
+<p style="color:var(--ink-muted)">要求内容は <a href="requirements.html" style="color:var(--primary)">requirements.html</a>。</p>
+
+<h2>1. 全体方針</h2>
+<div class="card">
+  <ul>
+    <li><strong>エラーと警告を明確に分ける</strong>。エラーは changeset（保存不可）、警告は Context が返す別のリストとして扱い、画面で表示する</li>
+    <li><strong>オドメーター逆転の扱いはロールで変える</strong>。運転者は保存不可、運行管理者は備考を入力して保存可（V-10）。changeset にオプションで厳格さを渡す</li>
+    <li><strong>状態遷移は業務上の動詞で表す</strong>（<code>coding-rules.md</code> 4.1）。<code>submit_report/2</code> <code>approve_report/3</code> <code>reject_report/4</code> を用意し、<code>update_*</code> に押し込めない</li>
+    <li><strong>運転者の画面はモバイルを主対象にする</strong>。1カラム・大きめの入力欄・段階的な入力（出発 → 帰着 → 給油）</li>
+    <li>給油記録は日報に従属する子エンティティ。<strong>専用 Context を作らない</strong>（<code>coding-rules.md</code> 2.1）</li>
+  </ul>
+</div>
+
+<h2>2. データモデル</h2>
+<h3>2.1 operation_reports</h3>
+<p>定義は <code>functional-design.md</code> 4.3 のとおり。<code>office_id</code> は検索用に非正規化して保持する。</p>
+<table>
+  <thead><tr><th style="width:230px">カラム</th><th style="width:160px">型</th><th>制約</th></tr></thead>
+  <tbody>
+    <tr><td><code>office_id</code> / <code>vehicle_id</code> / <code>driver_id</code></td><td>ULID / FK</td><td>NOT NULL, IDX</td></tr>
+    <tr><td><code>created_by_user_id</code></td><td>ULID / FK</td><td>NOT NULL</td></tr>
+    <tr><td><code>operation_date</code></td><td>date</td><td>NOT NULL, IDX</td></tr>
+    <tr><td><code>departed_at</code> / <code>returned_at</code></td><td>utc_datetime</td><td>NOT NULL</td></tr>
+    <tr><td><code>start_odometer</code> / <code>end_odometer</code></td><td>integer</td><td>NOT NULL</td></tr>
+    <tr><td><code>distance_km</code></td><td>integer</td><td>NOT NULL（保存時に算出）</td></tr>
+    <tr><td><code>destination</code> / <code>cargo_type</code></td><td>string(255) / string(100)</td><td>任意</td></tr>
+    <tr><td><code>rest_minutes</code></td><td>integer</td><td>任意</td></tr>
+    <tr><td><code>status</code></td><td>string</td><td>NOT NULL, default <code>draft</code>, IDX</td></tr>
+    <tr><td><code>submitted_at</code> / <code>approved_at</code></td><td>utc_datetime</td><td>任意</td></tr>
+    <tr><td><code>approved_by_user_id</code></td><td>ULID / FK</td><td>任意</td></tr>
+    <tr><td><code>rejected_reason</code></td><td>text</td><td>任意（差戻し時は必須）</td></tr>
+    <tr><td><code>note</code></td><td>text</td><td>任意</td></tr>
+  </tbody>
+</table>
+<p>複合インデックス: <code>(office_id, operation_date)</code> / <code>(vehicle_id, operation_date)</code> / <code>(driver_id, operation_date)</code> / <code>(status, office_id)</code></p>
+
+<h3>2.2 refuelings</h3>
+<table>
+  <thead><tr><th style="width:230px">カラム</th><th style="width:160px">型</th><th>制約</th></tr></thead>
+  <tbody>
+    <tr><td><code>operation_report_id</code></td><td>ULID / FK</td><td>NOT NULL, IDX, <code>on_delete: :delete_all</code></td></tr>
+    <tr><td><code>refueled_at</code></td><td>utc_datetime</td><td>NOT NULL</td></tr>
+    <tr><td><code>liters</code></td><td>decimal(6,2)</td><td>NOT NULL, &gt; 0</td></tr>
+    <tr><td><code>amount_yen</code></td><td>integer</td><td>任意, &gt;= 0</td></tr>
+    <tr><td><code>odometer</code></td><td>integer</td><td>任意</td></tr>
+  </tbody>
+</table>
+<p><code>cast_assoc(:refuelings, with: &amp;Refueling.changeset/2)</code> で日報と同時に保存する（V-17）。</p>
+
+<h2>3. 検証の分類（R-3）</h2>
+<p><span class="tag err">エラー</span> は保存不可、<span class="tag wrn">警告</span> は保存できるが画面に表示する。</p>
+<table>
+  <thead><tr><th style="width:70px">#</th><th style="width:90px">種別</th><th>内容</th><th style="width:230px">実装</th></tr></thead>
+  <tbody>
+    <tr><td>V-9</td><td><span class="tag err">エラー</span></td><td>帰着日時 &gt; 出発日時</td><td>changeset（全ロール共通）</td></tr>
+    <tr><td>V-10</td><td><span class="tag err">エラー</span>／<span class="tag wrn">警告</span></td>
+      <td>帰着時オドメーター &gt;= 出発時オドメーター</td>
+      <td><strong>運転者はエラー、運行管理者・管理者は警告</strong>。<code>changeset(report, attrs, strict: true|false)</code> で切り替える</td></tr>
+    <tr><td>V-11</td><td><span class="tag wrn">警告</span></td><td>出発時オドメーター &gt;= 同一車両の直近日報の帰着時オドメーター</td><td>Context の <code>warnings/2</code>。DBを参照するため changeset では判定しない</td></tr>
+    <tr><td>V-12</td><td>—</td><td>走行距離は保存時に算出。手入力不可</td><td>changeset の <code>prepare_changes</code> ではなく、cast 対象から除外して <code>put_change</code> で設定</td></tr>
+    <tr><td>V-13</td><td><span class="tag wrn">警告</span></td><td>同一車両・同一時間帯の日報が既に存在する</td><td>Context の <code>warnings/2</code></td></tr>
+    <tr><td>V-14</td><td><span class="tag err">エラー</span></td><td>運行日に未来日は登録できない（JST基準）</td><td>changeset</td></tr>
+    <tr><td>V-15</td><td><span class="tag err">エラー</span></td><td>休憩時間は0以上、運行時間（帰着−出発）未満</td><td>changeset</td></tr>
+    <tr><td>V-16</td><td><span class="tag err">エラー</span></td><td>給油量は0より大きい</td><td><code>Refueling.changeset/2</code></td></tr>
+    <tr><td>V-19</td><td><span class="tag err">エラー</span></td><td>差戻し時は理由が必須</td><td><code>reject_report/4</code> 専用の changeset</td></tr>
+    <tr><td>追加1</td><td><span class="tag err">エラー</span></td><td>運行日は出発日時の日付と同じか前日（日跨ぎ運行を許容）</td><td>changeset</td></tr>
+    <tr><td>追加2</td><td><span class="tag err">エラー</span></td><td>給油日時は出発日時から帰着日時の間</td><td><code>Refueling.changeset/2</code>（親の日時を渡す）</td></tr>
+  </tbody>
+</table>
+
+<h3>3.1 警告の返し方</h3>
+<pre><code># lib/core_app/operation_reports.ex
+
+@doc "保存はできるが確認すべき事項を返します。"
+def warnings(%Scope{} = scope, %Ecto.Changeset{} = changeset) do
+  [] |> odometer_gap_warning(changeset) |> duplicate_warning(scope, changeset)
+end
+
+# => ["前回の帰着時オドメーター（123,456 km）より小さい値です。", ...]</code></pre>
+<p>LiveView は <code>handle_event("validate", ...)</code> で <code>warnings/2</code> を呼び、フォーム上部に表示する。</p>
+
+<h2>4. ドメイン層</h2>
+<h3>4.1 CoreApp.OperationReports</h3>
+<pre><code>list_operation_reports(scope, params \\ %{})
+get_operation_report!(scope, id)
+create_operation_report(scope, attrs, opts \\ [])
+update_operation_report(scope, report, attrs, opts \\ [])
+change_operation_report(scope, report, attrs \\ %{})
+warnings(scope, changeset)
+
+# 状態遷移（業務上の動詞）
+submit_report(scope, report)
+approve_report(scope, report, opts \\ [])     # 車両オドメーター更新 + 監査ログ
+reject_report(scope, report, reason, opts \\ [])
+
+count_reports_by_status(scope)                 # ダッシュボード用
+editable?(scope, report)                       # 画面の出し分けにも使う</code></pre>
+
+<h3>4.2 スコープの適用</h3>
+<pre><code>defp scoped(query, %Scope{role: :admin}), do: query
+
+defp scoped(query, %Scope{role: :manager, office_id: office_id}),
+  do: where(query, [r], r.office_id == ^office_id)
+
+# 一般利用者は「自分が運転者の日報」のみ。運転者が紐付いていない場合は何も見えない
+defp scoped(query, %Scope{role: :member, driver_id: nil}),
+  do: where(query, [r], false)
+
+defp scoped(query, %Scope{role: :member, driver_id: driver_id}),
+  do: where(query, [r], r.driver_id == ^driver_id)</code></pre>
+<div class="note warn">
+  <strong>運転者が紐付いていない一般利用者</strong>は日報を作成・参照できない。
+  画面には「運行管理者に運転者台帳との紐付けを依頼してください」と案内を表示する。
+</div>
+
+<h3>4.3 編集可否（R-9）</h3>
+<table>
+  <thead><tr><th style="width:150px">ステータス</th><th style="width:150px">一般利用者</th><th style="width:170px">運行管理者</th><th>管理者</th></tr></thead>
+  <tbody>
+    <tr><td>下書き</td><td>編集・提出・削除</td><td>編集・提出</td><td>編集・提出</td></tr>
+    <tr><td>提出済み</td><td>参照のみ</td><td>編集・承認・差戻し</td><td>編集・承認・差戻し</td></tr>
+    <tr><td>承認済み</td><td>参照のみ</td><td>参照のみ</td><td>編集可</td></tr>
+    <tr><td>差戻し</td><td>編集・再提出</td><td>編集</td><td>編集</td></tr>
+  </tbody>
+</table>
+<p><strong>下書きの削除は例外的に物理削除を認める</strong>（<code>development-guidelines.md</code> 6.3 で許可済み）。提出以降は削除しない。</p>
+
+<h3>4.4 承認処理（R-6）</h3>
+<pre><code>Multi.new()
+|> Multi.update(:report, status_changeset(report, :approved, scope))
+|> Multi.run(:vehicle, fn repo, %{report: report} ->
+     # V-18: より大きい値の場合のみ更新する
+     ...
+   end)
+|> AuditLogs.record_multi(:audit_log, scope, :approve, &{"operation_report", &1.report})
+|> Repo.transaction()</code></pre>
+
+<h3>4.5 一覧の params</h3>
+<table>
+  <thead><tr><th style="width:190px">パラメータ</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><code>from</code> / <code>to</code></td><td>運行日の期間（既定は当月）</td></tr>
+    <tr><td><code>vehicle_id</code> / <code>driver_id</code></td><td>車両・運転者（運転者の絞り込みは運行管理者以上のみ）</td></tr>
+    <tr><td><code>status</code></td><td>ステータス。未指定時は全件</td></tr>
+    <tr><td><code>office_id</code></td><td>拠点（管理者のみ）</td></tr>
+    <tr><td><code>page</code> / <code>page_size</code></td><td>ページネーション</td></tr>
+  </tbody>
+</table>
+<p>並び順は運行日の降順、同日は出発日時の降順。</p>
+
+<h2>5. 画面</h2>
+<h3>5.1 URL とモジュール</h3>
+<table>
+  <thead><tr><th style="width:330px">URL</th><th style="width:110px">ロール</th><th>モジュール</th></tr></thead>
+  <tbody>
+    <tr><td><code>/operation_reports</code></td><td>全ロール</td><td><code>OperationReportLive.Member.Index</code></td></tr>
+    <tr><td><code>/operation_reports/new</code></td><td>全ロール</td><td><code>OperationReportLive.Member.Form</code>（<code>:new</code>）</td></tr>
+    <tr><td><code>/operation_reports/:id/edit</code></td><td>全ロール</td><td><code>OperationReportLive.Member.Form</code>（<code>:edit</code>）</td></tr>
+    <tr><td><code>/operation_reports/:id</code></td><td>全ロール</td><td><code>OperationReportLive.Member.Show</code></td></tr>
+    <tr><td><code>/management/operation_reports</code></td><td>manager / admin</td><td><code>OperationReportLive.Manager.Index</code></td></tr>
+    <tr><td><code>/management/operation_reports/:id</code></td><td>manager / admin</td><td><code>OperationReportLive.Manager.Show</code></td></tr>
+    <tr><td><code>/management/operation_reports/:id/edit</code></td><td>manager / admin</td><td><code>OperationReportLive.Manager.Form</code>（<code>:edit</code>）</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 運転者向けフォーム（R-7・最重要）</h3>
+<ul>
+  <li>1カラム。セクションは <strong>運行 → 出発 → 帰着 → 給油 → その他</strong> の順で、実際の業務の順に並べる</li>
+  <li>車両・運転者は自拠点の選択肢。<strong>運転者は <code>current_scope.driver_id</code> を既定選択</strong>し、一般利用者は変更できない</li>
+  <li>運行日は当日を既定値にする</li>
+  <li>オドメーターは <code>inputmode="numeric"</code> とし、<strong>走行距離をその場で自動表示</strong>する（読み取り専用）</li>
+  <li>給油は「給油を追加」ボタンで行を増やす（<code>inputs_for</code> + <code>sort_param</code> / <code>drop_param</code>）</li>
+  <li>保存ボタンは<strong>「下書き保存」と「提出」の2つ</strong>。提出時のみ確認を挟む</li>
+  <li>警告はフォーム上部にまとめて表示し、<strong>提出を妨げない</strong>（運行管理者の場合）</li>
+</ul>
+
+<h3>5.3 運転者向け一覧・詳細</h3>
+<ul>
+  <li>一覧は自分の日報のみ。ステータスバッジ付きのカード表示を主とする（モバイル前提）</li>
+  <li><strong>差戻しの日報を最上部に固定表示</strong>し、理由を明示する</li>
+  <li>詳細は読み取り専用。下書き・差戻しのときのみ「編集」ボタンを表示する</li>
+</ul>
+
+<h3>5.4 運行管理者向け一覧・詳細</h3>
+<ul>
+  <li>一覧：期間（既定は当月）・車両・運転者・ステータスで絞り込み。<strong>「未承認のみ」への切り替えを1クリックで</strong>できるようにする</li>
+  <li>列：運行日 / 車両 / 運転者 / 走行距離 / 出発〜帰着 / ステータス</li>
+  <li>詳細：日報の全項目 + 給油記録 + 警告（オドメーターの逆転など）を表示</li>
+  <li>提出済みのときのみ「承認」「差戻し」ボタンを表示。差戻しは理由の入力欄を開いてから実行する</li>
+</ul>
+
+<h3>5.5 ダッシュボード（R-10）</h3>
+<table>
+  <thead><tr><th style="width:150px">ロール</th><th>表示</th></tr></thead>
+  <tbody>
+    <tr><td>一般利用者</td><td>未提出（下書き）件数・差戻し件数 → <code>/operation_reports?status=...</code></td></tr>
+    <tr><td>運行管理者・管理者</td><td>未承認（提出済み）件数 → <code>/management/operation_reports?status=submitted</code></td></tr>
+  </tbody>
+</table>
+<p>件数は <code>count_reports_by_status/1</code> を使い、ダッシュボードのカードコンポーネントとして実装する。</p>
+
+<h2>6. ステータスバッジの配色</h2>
+<table>
+  <thead><tr><th style="width:180px">ステータス</th><th style="width:150px">表示</th><th>トークン</th></tr></thead>
+  <tbody>
+    <tr><td>下書き</td><td><span class="tag" style="background:var(--ink-faint)">下書き</span></td><td><code>ink-faint</code></td></tr>
+    <tr><td>提出済み（未承認）</td><td><span class="tag" style="background:var(--accent-orange)">提出済み</span></td><td><code>accent-orange</code></td></tr>
+    <tr><td>承認済み</td><td><span class="tag" style="background:var(--accent-green)">承認済み</span></td><td><code>accent-green</code></td></tr>
+    <tr><td>差戻し</td><td><span class="tag" style="background:var(--accent-orange-deep)">差戻し</span></td><td><code>accent-orange-deep</code></td></tr>
+  </tbody>
+</table>
+<p><code>StatusComponents.status_badge/1</code> は車両ステータス専用になっているため、<strong>リソース種別を受け取る形に拡張する</strong>。</p>
+
+<h2>7. 実装順序</h2>
+<div class="card">
+  <ol>
+    <li><code>operation_reports</code> / <code>refuelings</code> マイグレーション</li>
+    <li><code>OperationReport</code> / <code>Refueling</code> スキーマ + changeset（エラー系の検証）</li>
+    <li><code>OperationReports</code> Context（スコープ・一覧・CRUD・<code>warnings/2</code>）＋ Context テスト</li>
+    <li>状態遷移（<code>submit_report</code> / <code>approve_report</code> / <code>reject_report</code>）＋ テスト</li>
+    <li><code>status_badge</code> の拡張と <code>OperationReportLive.Labels</code></li>
+    <li>運転者向け フォーム → 一覧 → 詳細</li>
+    <li>運行管理者向け 一覧 → 詳細（承認・差戻し）→ 編集</li>
+    <li>ダッシュボードの件数表示とナビゲーション有効化</li>
+    <li>seeds に各ステータスの日報を追加 → 通し動作確認</li>
+    <li>永続ドキュメントの更新要否確認</li>
+  </ol>
+</div>
+
+<h2>8. テスト方針</h2>
+<table>
+  <thead><tr><th style="width:240px">対象</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><strong>スコープ境界</strong></td><td>一般利用者は他人の日報を取得・一覧できない。運行管理者は他拠点を見られない。運転者未紐付けの利用者は0件</td></tr>
+    <tr><td>changeset（エラー）</td><td>V-9・V-14・V-15・V-16・追加1・追加2 と必須項目</td></tr>
+    <tr><td>V-10 のロール差</td><td>同じ入力で、運転者は <code>{:error, _}</code>、運行管理者は <code>{:ok, _}</code> になること</td></tr>
+    <tr><td>警告</td><td>前回オドメーターとの逆転・同一時間帯の重複で警告が返る。保存自体は成功する</td></tr>
+    <tr><td>走行距離</td><td>保存時に算出される。パラメータで <code>distance_km</code> を渡しても無視される</td></tr>
+    <tr><td>給油記録</td><td>日報と同時に保存される。給油量が0のとき日報ごと保存されない（V-17のロールバック）</td></tr>
+    <tr><td>状態遷移</td><td>下書き→提出→承認／差戻し→再提出。各ロールで許可される遷移のみ実行できる</td></tr>
+    <tr><td>承認</td><td>車両の <code>latest_odometer</code> が更新される。より小さい値では更新されない。監査ログが残る</td></tr>
+    <tr><td>差戻し</td><td>理由が無いと失敗する。差戻し後は運転者が編集できる</td></tr>
+    <tr><td>LiveView</td><td>作成→提出→承認の一連、差戻し→再提出、編集不可のときボタンが出ないこと</td></tr>
+  </tbody>
+</table>
+
+<h2>9. リスクと対応</h2>
+<table>
+  <thead><tr><th style="width:320px">リスク</th><th>対応</th></tr></thead>
+  <tbody>
+    <tr><td>ロールによって検証の強さが変わる設計が複雑になる</td><td>切り替えは <code>strict:</code> オプション1つに限定し、判断は Context（<code>create/update</code>）で行う。スキーマ側はオプションを受け取るだけにする</td></tr>
+    <tr><td><code>inputs_for</code> による給油記録の動的追加・削除</td><td>Phoenix 1.8 の <code>sort_param</code> / <code>drop_param</code> を使う。噛み合わない場合はJSなしの「行を追加」ボタン（サーバ側で空要素を足す）に切り替える</td></tr>
+    <tr><td>日跨ぎ運行での運行日の扱い</td><td>運行日は出発日の日付と同日または翌日までを許容し、ユーザーが選べるようにする。既定は出発日</td></tr>
+    <tr><td>承認時の車両更新で競合が起きる</td><td>同一トランザクション内で車両を取得し直して比較する</td></tr>
+    <tr><td>モバイルでの入力量が多く離脱する</td><td>下書き保存を用意する。必須項目を7つに絞り、任意項目は折りたたむ</td></tr>
+  </tbody>
+</table>
+
+</main>
+</body>
+</html>

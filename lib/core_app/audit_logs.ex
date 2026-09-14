@@ -57,15 +57,19 @@ defmodule CoreApp.AuditLogs do
   監査ログをページネーション付きで取得します。管理者のみが参照できます。
 
   ## params
+  - `q` 検索ワード（操作者の氏名・メールアドレス）
   - `resource_type` リソース種別
+  - `action` 操作
   - `user_id` 操作者
   - `page` / `page_size` ページネーション
   """
   def list_audit_logs(%Scope{role: :admin} = _scope, params \\ %{}) do
     AuditLog
     |> filter_by_resource_type(params["resource_type"])
+    |> filter_by_action(params["action"])
     |> filter_by_user(params["user_id"])
-    |> order_by([l], desc: l.inserted_at)
+    |> search(params["q"])
+    |> order_by([l], desc: l.inserted_at, desc: l.id)
     |> preload(:user)
     |> Pagination.paginate(params, Repo)
   end
@@ -76,7 +80,7 @@ defmodule CoreApp.AuditLogs do
   def all_audit_logs_for(resource_type, <<_::208>> = resource_id) do
     AuditLog
     |> where([l], l.resource_type == ^resource_type and l.resource_id == ^resource_id)
-    |> order_by([l], desc: l.inserted_at)
+    |> order_by([l], desc: l.inserted_at, desc: l.id)
     |> preload(:user)
     |> Repo.all()
   end
@@ -123,4 +127,21 @@ defmodule CoreApp.AuditLogs do
   defp filter_by_user(query, user_id) do
     where(query, [l], l.user_id == ^user_id)
   end
+
+  defp filter_by_action(query, nil), do: query
+  defp filter_by_action(query, ""), do: query
+
+  defp filter_by_action(query, action) do
+    where(query, [l], l.action == ^action)
+  end
+
+  defp search(query, keyword) when is_binary(keyword) and keyword != "" do
+    pattern = "%#{String.trim(keyword)}%"
+
+    query
+    |> join(:inner, [l], u in assoc(l, :user), as: :user)
+    |> where([l, user: u], ilike(u.name, ^pattern) or ilike(u.email, ^pattern))
+  end
+
+  defp search(query, _keyword), do: query
 end

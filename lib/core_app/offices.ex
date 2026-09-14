@@ -8,6 +8,27 @@ defmodule CoreApp.Offices do
 
   alias CoreApp.Offices.Office
 
+  alias CoreApp.Accounts.Scope
+  alias CoreApp.Utils.Pagination
+
+  @doc """
+  ページネーションに対応した拠点を取得します。拠点コードの昇順で返します。
+
+  管理画面用のため、無効化した拠点も扱えます。参照できるのは管理者だけです。
+
+  ## params
+  - `q` 検索ワード（拠点コード、拠点名）
+  - `active` 有効フラグ。未指定時は有効な拠点のみ、`all` を指定すると無効な拠点を含む
+  - `page` / `page_size` ページネーション
+  """
+  def list_offices(%Scope{role: :admin} = _scope, params \\ %{}) do
+    Office
+    |> filter_by_active(params["active"])
+    |> search(params["q"])
+    |> order_by([o], asc: o.code)
+    |> Pagination.paginate(params, Repo)
+  end
+
   @doc """
   有効な拠点をすべて取得します。拠点コードの昇順で返します。
 
@@ -54,4 +75,18 @@ defmodule CoreApp.Offices do
   def change_office(%Office{} = office, attrs \\ %{}) do
     Office.changeset(office, attrs)
   end
+
+  defp filter_by_active(query, "all"), do: query
+
+  defp filter_by_active(query, "false"), do: where(query, [o], o.active == false)
+
+  defp filter_by_active(query, _active), do: where(query, [o], o.active == true)
+
+  defp search(query, keyword) when is_binary(keyword) and keyword != "" do
+    pattern = "%#{String.trim(keyword)}%"
+
+    where(query, [o], ilike(o.code, ^pattern) or ilike(o.name, ^pattern))
+  end
+
+  defp search(query, _keyword), do: query
 end
