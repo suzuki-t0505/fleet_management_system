@@ -7,6 +7,7 @@
 
 alias CoreApp.Accounts
 alias CoreApp.Accounts.Scope
+alias CoreApp.Incidents
 alias CoreApp.Offices
 alias CoreApp.Drivers
 alias CoreApp.OperationReports
@@ -346,5 +347,81 @@ if tky_vehicle && tky_driver do
     else
       IO.puts("skipped operation report: #{operation_date}")
     end
+  end
+end
+
+# --- 事故・ヒヤリ ---
+# 報告直後・分析中・完了の3状態を作り、画面の出し分けを確認できるようにする。
+incidents = [
+  %{
+    "category" => "near_miss",
+    "place" => "東京都江東区 青海ランプ付近",
+    "weather" => "rain",
+    "description" => "合流時に後方の車両を見落とし、急ブレーキで回避した。",
+    "progress" => "reported"
+  },
+  %{
+    "category" => "single",
+    "place" => "東京都江東区 青海営業所構内",
+    "weather" => "clear",
+    "description" => "後退時に縁石へ乗り上げ、左後輪付近から異音がする。",
+    "progress" => "analyzing"
+  },
+  %{
+    "category" => "property",
+    "place" => "東京都港区 芝公園2丁目",
+    "weather" => "cloudy",
+    "description" => "駐車場で切り返し中に相手車両の前バンパーへ接触した。",
+    "progress" => "closed"
+  }
+]
+
+manager_scope = Accounts.get_user_by_email("manager@example.com") |> Scope.for_user()
+
+for {attrs, index} <- Enum.with_index(incidents) do
+  if Incidents.list_incidents(admin_scope, %{"q" => attrs["place"]}).total_entries == 0 do
+    occurred_at =
+      DateTime.utc_now()
+      |> DateTime.add(-(index + 1) * 24 * 3600, :second)
+      |> DateTime.truncate(:second)
+
+    {:ok, incident} =
+      Incidents.create_incident(
+        manager_scope,
+        Map.merge(attrs, %{
+          "vehicle_id" => tky_vehicle.id,
+          "driver_id" => tky_driver.id,
+          "occurred_at" => DateTime.to_iso8601(occurred_at)
+        })
+      )
+
+    incident =
+      case attrs["progress"] do
+        "reported" ->
+          incident
+
+        "analyzing" ->
+          {:ok, analyzing} = Incidents.start_analysis(manager_scope, incident)
+          analyzing
+
+        "closed" ->
+          {:ok, analyzing} = Incidents.start_analysis(manager_scope, incident)
+
+          {:ok, reported} =
+            Incidents.report_countermeasure(manager_scope, analyzing, %{
+              "direct_cause" => "後方確認が不十分だった",
+              "background_factor" => "納品時刻に追われ、手順を省略していた",
+              "countermeasure" => "構内の後退は誘導者を付ける手順に変更する",
+              "countermeasure_owner" => "運行 花子"
+            })
+
+          {:ok, closed} = Incidents.approve_incident(admin_scope, reported)
+          {:ok, shared} = Incidents.share_incident(admin_scope, closed, true)
+          shared
+      end
+
+    IO.puts("created incident: #{incident.place} (#{incident.status})")
+  else
+    IO.puts("skipped incident: #{attrs["place"]}")
   end
 end

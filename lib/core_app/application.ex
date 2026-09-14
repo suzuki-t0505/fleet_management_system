@@ -19,10 +19,22 @@ defmodule CoreApp.Application do
       CoreAppWeb.Endpoint
     ]
 
+    children = children ++ goth_children()
+
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: CoreApp.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Cloud Storage を使う場合だけ goth を起動する。
+  # 開発・テストはローカル保存のため、認証情報が無くても起動できるようにする。
+  defp goth_children do
+    if CoreApp.Utils.Storage.adapter() == CoreApp.Utils.Storage.Gcs do
+      [{Goth, name: CoreApp.Goth}]
+    else
+      []
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration

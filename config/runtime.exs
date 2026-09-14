@@ -41,6 +41,16 @@ if config_env() == :dev do
 end
 
 if config_env() == :prod do
+  # 添付ファイルは Cloud Storage に保存する。認証は Cloud Run のサービスアカウント（goth）。
+  config :core_app, :storage,
+    adapter: CoreApp.Utils.Storage.Gcs,
+    bucket:
+      System.get_env("GCS_BUCKET") ||
+        raise("""
+        environment variable GCS_BUCKET is missing.
+        添付ファイルの保存先バケット名を指定してください。
+        """)
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

@@ -88,6 +88,7 @@ defmodule CoreAppWeb do
       import CoreAppWeb.CoreComponents
 
       # 自作の共通コンポーネント（見た目の値は docs/DESIGN-notion.md に従う）
+      import CoreAppWeb.AttachmentComponents
       import CoreAppWeb.CardComponents
       import CoreAppWeb.PaginationComponents
       import CoreAppWeb.SearchComponents

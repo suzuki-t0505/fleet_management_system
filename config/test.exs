@@ -26,6 +26,11 @@ config :core_app, CoreAppWeb.Endpoint,
   secret_key_base: "jZjTG3DUnweKP8hZ8y6ewLe32V+I3wTEVI3pZBdiBQNUxJtBZ3zZ/2iNid6kZY2+",
   server: false
 
+# 添付ファイルはテスト専用のディレクトリに保存する
+config :core_app, :storage,
+  adapter: CoreApp.Utils.Storage.Local,
+  root: "priv/uploads_test"
+
 # In test we don't send emails
 config :core_app, CoreApp.Mailer, adapter: Swoosh.Adapters.Test
 

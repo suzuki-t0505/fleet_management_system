@@ -152,7 +152,7 @@ defmodule CoreAppWeb.Layouts do
     base = [
       %{label: "ダッシュボード", icon: "hero-home", path: "/"},
       %{label: "運行日報", icon: "hero-document-text", path: operation_reports_path(scope)},
-      %{label: "事故・ヒヤリ", icon: "hero-exclamation-triangle", path: nil},
+      %{label: "事故・ヒヤリ", icon: "hero-exclamation-triangle", path: incidents_path(scope)},
       %{label: "車両", icon: "hero-truck", path: vehicles_path(scope)}
     ]
 
@@ -178,6 +178,10 @@ defmodule CoreAppWeb.Layouts do
 
   defp operation_reports_path(scope) do
     if Scope.manager?(scope), do: "/management/operation_reports", else: "/operation_reports"
+  end
+
+  defp incidents_path(scope) do
+    if Scope.manager?(scope), do: "/management/incidents", else: "/incidents"
   end
 
   # 運行管理者・管理者は台帳（編集可）、一般利用者は参照専用の画面へ遷移する
