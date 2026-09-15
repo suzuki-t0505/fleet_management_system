@@ -2,8 +2,11 @@ defmodule CoreAppWeb.AttachmentController do
   @moduledoc """
   添付ファイルを配信するコントローラです。
 
-  公開URLは発行せず、**対象レコードをスコープ付きで引き直してから**配信します。
-  参照できない利用者には、他拠点に何が存在するかを推測させないため 404 を返します。
+  **対象レコードをスコープ付きで引き直してから**配信します。参照できない利用者には、
+  他拠点に何が存在するかを推測させないため 404 を返します。
+
+  認可を通ったあとは、保存先が発行する署名付きURL（5分間有効）へリダイレクトします。
+  署名できない保存先（開発・テストのローカル保存）では、これまでどおりアプリが本体を配信します。
   """
   use CoreAppWeb, :controller
 
@@ -11,6 +14,7 @@ defmodule CoreAppWeb.AttachmentController do
   alias CoreApp.Attachments.Attachment
   alias CoreApp.Incidents
   alias CoreApp.Maintenances
+  alias CoreApp.Utils.Storage
   alias CoreApp.Vehicles
 
   def download(conn, %{"id" => id}) do
@@ -18,6 +22,15 @@ defmodule CoreAppWeb.AttachmentController do
     attachment = Attachments.get_attachment!(id)
 
     _attachable = fetch_attachable!(scope, attachment)
+
+    case Storage.signed_url(attachment.storage_key) do
+      {:ok, url} -> redirect(conn, external: url)
+      {:error, _reason} -> send_attachment(conn, attachment)
+    end
+  end
+
+  # 署名付きURLを発行できない保存先（ローカル）向けのフォールバック。
+  defp send_attachment(conn, attachment) do
     {:ok, binary} = Attachments.read_attachment(attachment)
 
     conn

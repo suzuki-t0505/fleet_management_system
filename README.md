@@ -20,6 +20,7 @@ Ready to run in production? Please [check our deployment guides](https://phoenix
 | `SECRET_KEY_BASE` | ✅ | なし | Cookie・トークンの署名鍵。`mix phx.gen.secret` で生成する |
 | `DATABASE_URL` | ✅ | なし | DB接続URL。例: `ecto://USER:PASS@HOST/DATABASE` |
 | `GCS_BUCKET` | ✅ | なし | 添付ファイルの保存先 Cloud Storage バケット名 |
+| `GCS_SIGNER_EMAIL` | ✅ | なし | 署名付きURLの発行に使うサービスアカウントのメールアドレス。自身に `roles/iam.serviceAccountTokenCreator` が必要 |
 | `PHX_SERVER` | ✅ | なし | `true` でHTTPサーバを起動。リリースの `bin/server` が自動設定する |
 | `PHX_HOST` | - | `example.com` | 公開ホスト名。URL生成に使う（https / 443固定） |
 | `PORT` | - | `4000` | HTTP待ち受けポート。Cloud Run では自動で設定される |

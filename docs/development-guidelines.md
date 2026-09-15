@@ -405,7 +405,7 @@ product-requirements.md > functional-design.md > architecture.md
 | 対象 | 状態 |
 |------|------|
 | 品質ゲート（credo 含む） | `make check` が通る |
-| 依存（oban / bcrypt / goth / google_api_storage / nimble_csv） | 追加済み |
+| 依存（oban / bcrypt / goth / google_api_storage / gcs_signed_url / nimble_csv） | 追加済み |
 | 認証・認可（`Accounts.Scope` / 3種の live_session） | 実装済み |
 | 拠点（`offices`） | テーブルと最小 Context のみ（管理画面は未実装） |
 | Oban | 起動済み。cron の登録はジョブ実装時に行う |

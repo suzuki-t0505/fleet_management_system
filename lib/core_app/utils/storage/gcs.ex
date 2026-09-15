@@ -5,34 +5,34 @@ defmodule CoreApp.Utils.Storage.Gcs do
   認証は `goth`（Cloud Run のサービスアカウント）で行い、バケットは
   `config :core_app, :storage, bucket: "..."` で指定します。
 
-  アップロードは**単純アップロード**（`uploadType=media`）で行います。生成クライアントの
-  `storage_objects_insert_simple/7`（`uploadType=multipart`）は使いません。`google_gax` が
-  `Tesla.Multipart` にフィールド名をアトムで渡すため、マルチパート境界の検証が入った
-  tesla では `FunctionClauseError` になるためです（`google_gax` は更新が止まっており、
-  最新の 0.4.1 でも同じ）。オブジェクト名は `name` クエリ、MIMEタイプは `Content-Type`
-  ヘッダで指定するため、単純アップロードでも必要な情報は揃います。
+  ダウンロードは署名付きURL（V4・5分間有効）で行います。URLの発行前に認可するのは
+  呼び出し側（`AttachmentController`）の責務です。署名には IAM の `signBlob` を使うため、
+  署名者のサービスアカウント（`config :core_app, :storage, signer_email: "..."`）に
+  `roles/iam.serviceAccountTokenCreator` が必要です。
 
-  > **未検証**: 開発環境にサービスアカウントの認証情報が無いため、`read/1` と `delete/1` は
-  > 実行経路を確認していません。自動テストはローカルアダプタに対して書いています。
+  > **未検証**: 開発環境にサービスアカウントの認証情報が無いため、実行経路は本番でしか
+  > 確認できません。自動テストはローカルアダプタに対して書いています。
   """
   @behaviour CoreApp.Utils.Storage
 
   alias CoreApp.Utils.Storage
-  alias GoogleApi.Gax.Request
-  alias GoogleApi.Gax.Response
   alias GoogleApi.Storage.V1.Api.Objects
   alias GoogleApi.Storage.V1.Connection
-  alias GoogleApi.Storage.V1.Model.Object
+
+  # 署名付きURLの有効期間（秒）
+  @expires 300
 
   @impl CoreApp.Utils.Storage
   def put(key, source_path, content_type) do
-    # ファイル全体をメモリに読み込む。サイズの上限は `Attachments` が保存前に検証している。
     with {:ok, connection} <- connection(),
-         {:ok, data} <- File.read(source_path),
          {:ok, _object} <-
-           connection
-           |> Connection.execute(insert_request(key, content_type, data))
-           |> Response.decode(struct: %Object{}) do
+           Objects.storage_objects_insert_simple(
+             connection,
+             bucket(),
+             "multipart",
+             %{name: key, contentType: content_type},
+             source_path
+           ) do
       :ok
     end
   end
@@ -54,16 +54,19 @@ defmodule CoreApp.Utils.Storage.Gcs do
     end
   end
 
-  defp insert_request(key, content_type, data) do
-    Request.new()
-    |> Request.method(:post)
-    |> Request.url("/upload/storage/v1/b/{bucket}/o", %{
-      "bucket" => URI.encode(bucket(), &URI.char_unreserved?/1)
-    })
-    |> Request.add_param(:query, :uploadType, "media")
-    |> Request.add_param(:query, :name, key)
-    |> Request.add_param(:header, "content-type", content_type)
-    |> Request.add_param(:body, :body, data)
+  @impl CoreApp.Utils.Storage
+  def signed_url(key) do
+    # 実体が無いキーにも署名できてしまうため、先に存在を確かめてから発行する。
+    with {:ok, token} <- Goth.fetch(CoreApp.Goth),
+         {:ok, signer_email} <- signer_email(),
+         {:ok, _object} <- Objects.storage_objects_get(Connection.new(token.token), bucket(), key) do
+      config = %GcsSignedUrl.SignBlob.OAuthConfig{
+        service_account: signer_email,
+        access_token: token.token
+      }
+
+      GcsSignedUrl.generate_v4(config, bucket(), key, verb: "GET", expires: @expires)
+    end
   end
 
   defp connection do
@@ -73,4 +76,11 @@ defmodule CoreApp.Utils.Storage.Gcs do
   end
 
   defp bucket, do: Storage.config(:bucket) || raise("storage bucket is not configured")
+
+  defp signer_email do
+    case Storage.config(:signer_email) do
+      nil -> {:error, :signer_email_not_configured}
+      email -> {:ok, email}
+    end
+  end
 end

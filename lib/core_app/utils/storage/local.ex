@@ -34,6 +34,9 @@ defmodule CoreApp.Utils.Storage.Local do
     end
   end
 
+  @impl CoreApp.Utils.Storage
+  def signed_url(_key), do: {:error, :not_supported}
+
   @doc """
   保存先のルートディレクトリを返します。
   """

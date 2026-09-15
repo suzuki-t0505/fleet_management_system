@@ -6,8 +6,8 @@ defmodule CoreApp.Utils.Storage do
   （`Storage.Gcs`）を使います。保存先の差し替えがこのモジュールの設定だけで済むよう、
   呼び出し側はアダプタを直接参照しません。
 
-  ダウンロードは常にアプリケーションを経由します（公開URL・署名付きURLは発行しません）。
-  参照できるかどうかの判定を1か所に集めるためです。
+  ダウンロードは常にアプリケーションで**認可してから**行います。認可を通ったあとの配信方法は
+  アダプタに委ねます（GCS は署名付きURLへリダイレクト、ローカルはアプリが本体を配信）。
   """
 
   @doc """
@@ -27,6 +27,14 @@ defmodule CoreApp.Utils.Storage do
   @callback delete(key :: String.t()) :: :ok | {:error, term()}
 
   @doc """
+  一時的に有効なダウンロードURLを返します。
+
+  発行できないアダプタ（ローカル保存）は `{:error, :not_supported}` を返します。呼び出し側は
+  その場合アプリケーションから本体を配信します。
+  """
+  @callback signed_url(key :: String.t()) :: {:ok, String.t()} | {:error, term()}
+
+  @doc """
   ファイルを保存します。
   """
   def put(key, source_path, content_type), do: adapter().put(key, source_path, content_type)
@@ -40,6 +48,11 @@ defmodule CoreApp.Utils.Storage do
   ファイルを削除します。
   """
   def delete(key), do: adapter().delete(key)
+
+  @doc """
+  一時的に有効なダウンロードURLを返します。
+  """
+  def signed_url(key), do: adapter().signed_url(key)
 
   @doc """
   設定されているアダプタを返します。

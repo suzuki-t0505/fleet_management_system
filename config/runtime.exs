@@ -49,6 +49,12 @@ if config_env() == :prod do
         raise("""
         environment variable GCS_BUCKET is missing.
         添付ファイルの保存先バケット名を指定してください。
+        """),
+    signer_email:
+      System.get_env("GCS_SIGNER_EMAIL") ||
+        raise("""
+        environment variable GCS_SIGNER_EMAIL is missing.
+        署名付きURLの発行に使うサービスアカウントのメールアドレスを指定してください。
         """)
 
   database_url =

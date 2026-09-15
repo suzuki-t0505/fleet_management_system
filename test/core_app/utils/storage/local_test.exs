@@ -29,6 +29,10 @@ defmodule CoreApp.Utils.Storage.LocalTest do
     assert :ok = Storage.delete("attachments/incident/#{Ecto.ULID.generate()}/none.png")
   end
 
+  test "署名付きURLは発行できない", %{key: key} do
+    assert {:error, :not_supported} = Storage.signed_url(key)
+  end
+
   test "保存先はルート配下に作られる", %{source: source, key: key} do
     :ok = Storage.put(key, source, "image/png")
 

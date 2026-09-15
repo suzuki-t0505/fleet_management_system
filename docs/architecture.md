@@ -36,7 +36,9 @@
 | `oban` | 定時実行（期限アラート）、メール送信、CSV生成の非同期化 | P0 |
 | `bcrypt_elixir` | パスワードハッシュ（`phx.gen.auth` の既定） | P0 |
 | `goth` | GCP サービスアカウントのトークン取得 | P0 |
-| `google_api_storage` | GCS へのファイル操作・署名URL発行 | P0 |
+| `google_api_storage` | GCS へのファイル操作 | P0 |
+| `gcs_signed_url` | 添付ファイルの署名付きURL発行（V4 / IAM signBlob） | P0 |
+| `tesla` | `google_gax` が使うHTTPクライアント。`~> 1.15.0` に固定（4.4 参照） | P0 |
 | `credo` | Lint（`make mix_credo` が参照するが**未導入**） | P0 |
 | `nimble_csv` | CSV出力 | P1 |
 | `excoveralls` | カバレッジ計測（`make mix_test_cover` の強化） | P2 |
@@ -290,8 +292,10 @@ MVP の機能にインスタンス横断のリアルタイム同期要件はな�
 | バケット構成 | `attachments/{attachable_type}/{attachable_id}/{ULID}_{元ファイル名}` |
 | アップロード | LiveView の `allow_upload`（`max_file_size: 10MB`, `accept: ~w(.pdf .jpg .jpeg .png)`）で受け、`consume_uploaded_entries` 内で GCS へ転送する |
 | 検証 | 拡張子に加え、先頭バイト（マジックナンバー）で MIMEタイプを検証する。不一致は拒否 |
-| ダウンロード | **常にアプリケーションのコントローラを経由**する。対象レコードをスコープ付きで引き直して認可してから配信し、公開URL・署名付きURLは発行しない |
+| ダウンロード | **常にアプリケーションのコントローラを経由**して認可する（対象レコードをスコープ付きで引き直す）。認可を通ったあとは署名付きURL（V4・5分間有効）へリダイレクトし、実体の配信は GCS に任せる。公開URLは発行しない |
+| 署名 | IAM の `signBlob` を使う（`gcs_signed_url` + `goth`）。署名者のサービスアカウントは `GCS_SIGNER_EMAIL` で指定し、自身に `roles/iam.serviceAccountTokenCreator` を付与する。署名前にオブジェクトの存在を確認する |
 | 認証 | Cloud Run のサービスアカウント + `goth`。`goth` は**保存先が GCS のときだけ起動**する（開発・テストは認証情報が無くても起動できるようにするため） |
+| APIの呼び方 | `google_api_storage` の `Objects` API を使う（アップロードは `uploadType=multipart`）。ただし `google_gax` は2021年で更新が止まっており、`tesla` 1.18.3 以降とは組み合わせられない（マルチパートのフィールド名にアトムを渡す・`DecompressResponse` に必須オプション `:max_body_size` を渡さないため、どちらも例外になる）。このため `tesla` を `~> 1.15.0` に固定している。**この tesla には CVE-2026-48594〜48598 が未修正で残る**ことを承知のうえでの選択 |
 | 設定 | `config :core_app, :storage, adapter: ..., root: ... / bucket: ...`。本番のバケット名は `GCS_BUCKET` から `runtime.exs` で読む |
 | 削除 | レコード削除時も GCS のオブジェクトは即時削除せず、バケットのライフサイクル（削除マーカー後30日）で消す |
 | 抽象化 | `Utils.Storage`（behaviour）にインターフェースを閉じ込め、`Storage.Local`（開発・テスト）と `Storage.Gcs`（本番）を設定で差し替える。呼び出し側はアダプタを直接参照しない |
@@ -389,6 +393,7 @@ UI の配色・タイポグラフィ・角丸・余白・コンポーネント�
 | `PHX_SERVER` | サーバー起動フラグ（`true`） | Cloud Run 環境変数 |
 | `PORT` | 待ち受けポート | Cloud Run が自動設定 |
 | `GCS_BUCKET` | 添付ファイルのバケット名 | Cloud Run 環境変数 |
+| `GCS_SIGNER_EMAIL` | 署名付きURLを発行するサービスアカウント | Cloud Run 環境変数 |
 | `SENDGRID_API_KEY` | メール送信 | Secret Manager |
 | `MAIL_FROM` | 送信元アドレス | Cloud Run 環境変数 |
 | `TZ_DISPLAY` | 表示タイムゾーン（既定 `Asia/Tokyo`） | Cloud Run 環境変数 |

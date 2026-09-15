@@ -62,6 +62,10 @@ config :core_app, :storage,
   adapter: CoreApp.Utils.Storage.Local,
   root: "priv/uploads"
 
+# google_gax（google_api_storage の依存）が使う tesla の旧ビルダーAPIの警告を止める。
+# tesla のバージョンは mix.exs のコメントの理由で固定している。
+config :tesla, disable_deprecated_builder_warning: true
+
 # Configure the mailer
 #
 # By default it uses the "Local" adapter which stores the emails

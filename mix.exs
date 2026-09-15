@@ -78,7 +78,12 @@ defmodule CoreApp.MixProject do
       {:oban, "~> 2.19"},
       {:nimble_csv, "~> 1.2"},
       {:goth, "~> 1.4"},
-      {:google_api_storage, "~> 0.44"},
+      {:google_api_storage, "~> 0.46.1"},
+      {:gcs_signed_url, "~> 0.4"},
+      # google_gax（google_api_storage の依存）は更新が止まっており、tesla 1.18.3 以降とは
+      # 組み合わせられない（マルチパートのフィールド名にアトムを渡す・DecompressResponse に
+      # 必須オプションを渡さないため例外になる）。バージョンを固定して回避する。
+      {:tesla, "~> 1.15.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
