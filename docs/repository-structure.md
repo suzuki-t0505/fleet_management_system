@@ -84,8 +84,9 @@ lib/core_app/
 | `alerts.ex` | `alerts/` | `alert_notification.ex` / `deadline.ex`（期限の値オブジェクト） / `alert_notifier.ex`（メール組み立て） |
 | `audit_logs.ex` | `audit_logs/` | `audit_log.ex` |
 | `reports.ex` | （なし） | 集計クエリ専用。スキーマを持たない読み取り専用 Context |
+| `exports.ex` | （なし） | CSV出力の行を返す読み取り専用 Context。一覧と違い平坦な列を返す |
 
-`utils/` には横断的な処理を置く。現時点で `convert_datetime.ex`（JSTの「今日」・表示変換）、`pagination.ex`（一覧の共通ページネーション）、`storage.ex` と `storage/`（添付ファイルの保存先。behaviour + ローカル / GCS アダプタ）がある。
+`utils/` には横断的な処理を置く。現時点で `convert_datetime.ex`（JSTの「今日」・表示変換）、`pagination.ex`（一覧の共通ページネーション）、`storage.ex` と `storage/`（添付ファイルの保存先。behaviour + ローカル / GCS アダプタ）、`csv.ex`（CSVの行組み立て）がある。
 
 ### 2.3 新しいファイルをどこに置くかの判断
 
@@ -142,7 +143,7 @@ lib/core_app_web/
 | 運転者 | `driver_live/` | `manager/`（管理者・運行管理者のみ） |
 | 点検整備 | `maintenance_live/` | `manager/`（管理者・運行管理者のみ） |
 | 期限アラート | `alert_live/` | `manager/`（管理者・運行管理者のみ） |
-| 集計レポート | `report_live/` | なし |
+| 集計レポート | `report_live/` | `manager/`（管理者・運行管理者のみ） |
 | 拠点 | `office_live/` | `admin/`（管理者のみ） |
 | ユーザー | `user_live/` | `admin/`（管理者のみ）。直下には認証画面（ログイン・設定）を置く |
 | 監査ログ | `audit_log_live/` | `admin/`（管理者のみ） |

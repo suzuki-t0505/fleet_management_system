@@ -325,9 +325,13 @@ MVP の機能にインスタンス横断のリアルタイム同期要件はな�
 
 ### 4.7 CSV出力
 
-- 10,000件までは同期生成し、その場でダウンロードさせる
-- 10,000件超は `CsvExportWorker` で非同期生成 → GCS に配置 → 完了メールに署名URLを載せる（上限50,000件）
-- `NimbleCSV` を使用し、UTF-8 BOM 付き・CRLF で出力する
+- **チャンク転送でその場で返す**（`Plug.Conn.send_chunked/2` + `Repo.stream/2`）。
+  1行ずつ書き出すため、上限の50,000件でも全件をメモリに載せない。非同期生成（ワーカー・GCS・完了メール）は行わない
+- 出力上限は50,000件。超過時は出力せず、一覧に戻して絞り込みを促す（`config :core_app, :csv_max_rows` で調整可能）
+- `NimbleCSV.RFC4180` を使用し、UTF-8 BOM 付き・CRLF で出力する
+- 行のクエリは `Exports` Context に置く。一覧の `preload` と違い**平坦な列**が要り、`Repo.stream/2` は preload を実行できないため
+- 集計レポートのCSVは集計後の行数が小さいため、ストリームせずそのまま書き出す
+- 認可は `/management/exports/...` の plug（`require_manager_user`）とクエリのスコープの2層。運行管理者のCSVに他拠点の行は入らない
 
 ### 4.8 UI とデザイントークン
 
