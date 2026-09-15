@@ -6,6 +6,7 @@ defmodule CoreAppWeb.DashboardLive.Index do
   alias CoreApp.Alerts
   alias CoreApp.Incidents
   alias CoreApp.OperationReports
+  alias CoreApp.Reports
 
   alias CoreAppWeb.IncidentLive.Labels
   alias CoreAppWeb.UserLive.Labels, as: UserLabels
@@ -20,7 +21,35 @@ defmodule CoreAppWeb.DashboardLive.Index do
      |> assign(report_counts: OperationReports.count_reports_by_status(scope))
      |> assign(deadline_counts: deadline_counts(scope))
      |> assign(incident_counts: incident_counts(scope))
-     |> assign(shared_incidents: Incidents.all_shared_incidents(scope))}
+     |> assign(shared_incidents: Incidents.all_shared_incidents(scope))
+     |> assign(activity: activity(scope))
+     |> assign(office_summaries: office_summaries(scope))
+     |> assign_member_panels(scope)}
+  end
+
+  # 件数カードと一覧は、そのロールで表示するものだけを読み込む
+  defp assign_member_panels(socket, scope) do
+    if Scope.manager?(scope) do
+      socket
+      |> assign(recent_reports: [])
+      |> assign(latest_vehicle: nil)
+    else
+      socket
+      |> assign(recent_reports: OperationReports.all_recent_reports(scope))
+      |> assign(latest_vehicle: OperationReports.get_latest_vehicle(scope))
+    end
+  end
+
+  defp activity(scope) do
+    if Scope.manager?(scope) do
+      Reports.monthly_activity(scope)
+    else
+      %{active_vehicles: 0, distance_km: 0}
+    end
+  end
+
+  defp office_summaries(scope) do
+    if Scope.admin?(scope), do: Reports.office_summaries(scope), else: []
   end
 
   @impl true
@@ -111,6 +140,76 @@ defmodule CoreAppWeb.DashboardLive.Index do
             tone={if @incident_counts.open > 0, do: "text-accent-orange", else: "text-ink"}
           />
         </div>
+
+        <section
+          :if={Scope.manager?(@current_scope)}
+          class="rounded-lg border border-hairline bg-surface p-6"
+        >
+          <div class="mb-4 flex items-center gap-3">
+            <h2 class="text-title">当月の実績</h2>
+            <.link
+              navigate={~p"/management/reports"}
+              class="text-caption ml-auto text-ink-muted hover:text-primary"
+            >
+              集計を見る
+            </.link>
+          </div>
+          <.definition_list>
+            <:item label="稼働車両台数">{@activity.active_vehicles} 台</:item>
+            <:item label="総走行距離">{@activity.distance_km} km</:item>
+          </.definition_list>
+          <p class="text-caption text-ink-muted mt-3">承認済みの日報のみを集計しています。</p>
+        </section>
+
+        <section
+          :if={Scope.admin?(@current_scope) and @office_summaries != []}
+          class="rounded-lg border border-hairline bg-surface p-6"
+        >
+          <h2 class="text-title mb-4">拠点別の内訳</h2>
+          <.data_table id="office-summaries" rows={@office_summaries}>
+            <:col :let={summary} label="拠点">{summary.office.name}</:col>
+            <:col :let={summary} label="当月の走行距離">{summary.distance_km} km</:col>
+            <:col :let={summary} label="未承認の日報">{summary.submitted_reports} 件</:col>
+            <:col :let={summary} label="未完了の改善報告">{summary.open_incidents} 件</:col>
+          </.data_table>
+        </section>
+
+        <section
+          :if={!Scope.manager?(@current_scope)}
+          class="rounded-lg border border-hairline bg-surface p-6"
+        >
+          <div class="mb-4 flex items-center gap-3">
+            <h2 class="text-title">直近7日の日報</h2>
+            <.link
+              navigate={~p"/operation_reports"}
+              class="text-caption ml-auto text-ink-muted hover:text-primary"
+            >
+              すべて見る
+            </.link>
+          </div>
+
+          <p :if={@latest_vehicle} class="text-body-sm text-ink-muted mb-3">
+            直近に運転した車両: {@latest_vehicle.plate_number}（{@latest_vehicle.model_name}）
+          </p>
+
+          <p :if={@recent_reports == []} class="text-body-sm text-ink-muted">
+            直近7日の日報はありません。
+          </p>
+
+          <.data_table
+            :if={@recent_reports != []}
+            id="recent-reports"
+            rows={@recent_reports}
+            row_click={&JS.navigate(~p"/operation_reports/#{&1}")}
+          >
+            <:col :let={report} label="運行日">{format_date(report.operation_date)}</:col>
+            <:col :let={report} label="車両">{report.vehicle.plate_number}</:col>
+            <:col :let={report} label="走行距離">{report.distance_km} km</:col>
+            <:col :let={report} label="ステータス">
+              <.status_badge status={report.status} type={:operation_report} />
+            </:col>
+          </.data_table>
+        </section>
 
         <section class="rounded-lg border border-hairline bg-surface p-6">
           <div class="mb-4 flex items-center gap-3">

@@ -61,6 +61,40 @@ defmodule CoreApp.OperationReports do
   end
 
   @doc """
+  スコープから見える直近の日報を、運行日の降順で取得します。
+
+  ダッシュボードの「直近7日の日報」に使います。期間で区切るため件数は限られます。
+  """
+  def all_recent_reports(%Scope{} = scope, days \\ 7) do
+    from_date = ConvertDatetime.today() |> Date.add(-(days - 1))
+
+    OperationReport
+    |> scoped(scope)
+    |> where([r], r.operation_date >= ^from_date)
+    |> order_by([r], desc: r.operation_date, desc: r.departed_at)
+    |> preload([:vehicle, :driver])
+    |> Repo.all()
+  end
+
+  @doc """
+  スコープから見える最も新しい日報の車両を返します。
+
+  車両の割当はデータモデルに無いため、「直近に運転した車両」で代替します。
+  """
+  def get_latest_vehicle(%Scope{} = scope) do
+    OperationReport
+    |> scoped(scope)
+    |> order_by([r], desc: r.operation_date, desc: r.departed_at)
+    |> limit(1)
+    |> preload(:vehicle)
+    |> Repo.one()
+    |> case do
+      nil -> nil
+      report -> report.vehicle
+    end
+  end
+
+  @doc """
   ステータスごとの日報の件数を返します。スコープの範囲内のみを数えます。
   """
   def count_reports_by_status(%Scope{} = scope) do

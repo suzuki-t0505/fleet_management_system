@@ -50,6 +50,12 @@ defmodule CoreAppWeb.OperationReportLive.Manager.Index do
         >
           未承認のみ表示
         </.link>
+        <.link
+          href={~p"/management/exports/operation_reports?#{@filters}"}
+          class="text-button rounded-md border border-hairline bg-surface px-4 py-2 text-ink hover:bg-canvas-soft"
+        >
+          CSV出力
+        </.link>
       </:actions>
 
       <div class="space-y-6">

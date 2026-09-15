@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>要求内容 - ダッシュボードとデータ出力</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:900px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  .pill { display:inline-block; border-radius:9999px; padding:4px 10px; font-size:12px; font-weight:600; color:#fff; }
+  .p0 { background:var(--accent-orange); } .p1 { background:var(--primary); }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20260914-reports</div>
+<h1>要求内容：ダッシュボードとデータ出力</h1>
+<p style="color:var(--ink-muted)">
+  対象機能: <strong>F-7 ダッシュボードとデータ出力</strong>（<a href="../../docs/product-requirements.md" style="color:var(--primary)">product-requirements.md</a> F-7 /
+  <a href="../../docs/functional-design.md" style="color:var(--primary)">functional-design.md</a> 8・9.2）
+</p>
+
+<h2>1. 背景</h2>
+<div class="card">
+  <p>MVP最後の機能。F-2〜F-6 でデータは貯まるようになったが、<strong>貯めたデータを読む側の出口が無い</strong>。
+  運行管理者は朝一番に何をすべきかを画面から判断できず、管理者は経営層への報告資料を作れない。</p>
+  <p>ダッシュボードは各機能の実装に合わせて少しずつ育ててきたが、
+  <strong>当月の稼働台数・走行距離、拠点別の内訳、運転者向けの直近の日報</strong>がまだ埋まっていない。
+  集計レポートとCSV出力は未着手。</p>
+</div>
+
+<h2>2. 目的</h2>
+<ul>
+  <li>ログイン直後の画面だけで「今日やること」が分かる状態にする</li>
+  <li>管理者が拠点間の差（走行距離・整備費・事故件数）を1画面で比較できるようにする</li>
+  <li>経営層への報告資料を、画面の絞り込みからCSVで作れるようにする</li>
+  <li>Excelで開いたときに文字化けしないCSVを出す</li>
+</ul>
+
+<h2>3. 対象範囲</h2>
+<table>
+  <thead><tr><th style="width:48px">#</th><th style="width:100px">優先度</th><th>要求</th></tr></thead>
+  <tbody>
+    <tr><td>R-1</td><td><span class="pill p1">P1</span></td>
+      <td><strong>ダッシュボードの補完</strong>。運行管理者に当月の稼働車両台数・総走行距離、一般利用者に直近7日の自分の日報と直近に運転した車両</td></tr>
+    <tr><td>R-2</td><td><span class="pill p1">P1</span></td>
+      <td><strong>管理者の拠点別内訳</strong>。拠点ごとに期限超過・未承認日報・未完了の改善報告・当月の走行距離を1つの表で比較できる</td></tr>
+    <tr><td>R-3</td><td><span class="pill p1">P1</span></td>
+      <td><strong>走行距離集計</strong>（月 × 車両 / 運転者 / 拠点）。走行距離合計・稼働日数</td></tr>
+    <tr><td>R-4</td><td><span class="pill p1">P1</span></td>
+      <td><strong>燃費集計</strong>（月 × 車両）。走行距離 ÷ 給油量、給油金額合計</td></tr>
+    <tr><td>R-5</td><td><span class="pill p1">P1</span></td>
+      <td><strong>整備費集計</strong>（月 × 車両 / 拠点）。費用合計と区分別の内訳</td></tr>
+    <tr><td>R-6</td><td><span class="pill p1">P1</span></td>
+      <td><strong>事故・ヒヤリ集計</strong>（月 × 拠点 × 区分）。発生件数と改善報告の完了率</td></tr>
+    <tr><td>R-7</td><td><span class="pill p1">P1</span></td>
+      <td><strong>集計対象は承認済みの日報のみ</strong>（下書き・提出済み・差戻しは集計に入れない）</td></tr>
+    <tr><td>R-8</td><td><span class="pill p1">P1</span></td>
+      <td><strong>一覧のCSV出力</strong>。車両・運転者・運行日報・点検整備・事故ヒヤリの5種を、<strong>画面の絞り込み条件をそのまま反映</strong>して出力する</td></tr>
+    <tr><td>R-9</td><td><span class="pill p1">P1</span></td>
+      <td><strong>集計レポートのCSV出力</strong>。表示している集計をそのまま出力する</td></tr>
+    <tr><td>R-10</td><td><span class="pill p1">P1</span></td>
+      <td><strong>CSVの形式</strong>。UTF-8（BOM付き）・CRLF・日本語のヘッダー行。Excelで文字化けしない</td></tr>
+    <tr><td>R-11</td><td><span class="pill p1">P1</span></td>
+      <td><strong>出力上限50,000件</strong>。超過時は出力せず、絞り込みを促すメッセージを表示する</td></tr>
+    <tr><td>R-12</td><td><span class="pill p1">P1</span></td>
+      <td><strong>CSVの権限</strong>。管理者は全拠点、運行管理者は自拠点のみ。一般利用者は出力できない</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 対象外（今回やらないこと）</h2>
+<table>
+  <thead><tr><th style="width:260px">項目</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr><td>CSVの非同期生成（<code>CsvExportWorker</code> + GCS + 完了メール）</td>
+      <td>ストリーミング配信にすることで、50,000件でもメモリを消費せずその場で返せるため不要になった。<strong>architecture.md 4.7 を更新する</strong></td></tr>
+    <tr><td>グラフ表示</td><td>MVPは数値と表に限定する。DESIGN-notion.md にチャートの定義が無く、先に定義が必要</td></tr>
+    <tr><td>KPIの自動集計（当日入力率など）</td><td>PRDのKPI測定はダッシュボードの表示項目に含まれていない。集計レポートのデータで代替できる</td></tr>
+    <tr><td>車両の割当（ドライバーへの固定割当）</td><td>データモデルに割当の概念が無い。「直近に運転した車両」で代替する</td></tr>
+  </tbody>
+</table>
+
+<h2>5. 受け入れ条件</h2>
+<div class="card">
+<ul>
+  <li>運行管理者のダッシュボードに当月の稼働台数と総走行距離が出る</li>
+  <li>管理者のダッシュボードに拠点別の内訳表が出る</li>
+  <li>一般利用者のダッシュボードに直近7日の自分の日報が出る</li>
+  <li>集計レポートが月別・軸別に表示され、承認済みの日報だけが集計される</li>
+  <li>燃費が「走行距離 ÷ 給油量」で算出され、給油が無い月は空欄になる</li>
+  <li>5種の一覧からCSVを出力すると、画面の絞り込みがそのまま反映される</li>
+  <li>運行管理者のCSVに他拠点のデータが入らない</li>
+  <li>CSVの先頭にBOMがあり、改行がCRLFで、ヘッダーが日本語である</li>
+  <li>50,000件を超える条件では出力されず、絞り込みを促される</li>
+  <li>一般利用者はCSVのURLを直接叩いてもブロックされる</li>
+  <li><code>make check</code>（compile / format / credo / test）がすべて通る</li>
+</ul>
+</div>
+
+<div class="note">
+  <strong>前提</strong>：F-1〜F-6 は実装済み。<code>nimble_csv</code> は依存に入っているが未使用。
+  ダッシュボードは日報・期限・事故の件数まで実装済み。
+</div>
+</main>
+</body>
+</html>
