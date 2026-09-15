@@ -9,6 +9,43 @@ Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 
 Ready to run in production? Please [check our deployment guides](https://phoenix.hexdocs.pm/deployment.html).
 
+## 環境変数
+
+### 本番（`MIX_ENV=prod` / Cloud Run）
+
+`config/runtime.exs` で読み込まれる。必須のものが未設定の場合は起動時に例外で停止する。
+
+| 変数名 | 必須 | 既定値 | 説明 |
+| --- | --- | --- | --- |
+| `SECRET_KEY_BASE` | ✅ | なし | Cookie・トークンの署名鍵。`mix phx.gen.secret` で生成する |
+| `DATABASE_URL` | ✅ | なし | DB接続URL。例: `ecto://USER:PASS@HOST/DATABASE` |
+| `GCS_BUCKET` | ✅ | なし | 添付ファイルの保存先 Cloud Storage バケット名 |
+| `PHX_SERVER` | ✅ | なし | `true` でHTTPサーバを起動。リリースの `bin/server` が自動設定する |
+| `PHX_HOST` | - | `example.com` | 公開ホスト名。URL生成に使う（https / 443固定） |
+| `PORT` | - | `4000` | HTTP待ち受けポート。Cloud Run では自動で設定される |
+| `POOL_SIZE` | - | `10` | Ecto のDBコネクションプールサイズ |
+| `ECTO_IPV6` | - | なし | `true` または `1` でDB接続にIPv6を使う |
+| `DNS_CLUSTER_QUERY` | - | なし | クラスタリング用のDNSクエリ。単一インスタンスなら不要 |
+| `GOOGLE_APPLICATION_CREDENTIALS` | - | なし | goth が使うサービスアカウント鍵のパス。Cloud Run 上ではメタデータサーバから取得するため不要 |
+
+### 開発（Docker Compose）
+
+`docker-compose.yml` で既定値が入るため、通常は設定不要。
+
+| 変数名 | 必須 | 既定値 | 説明 |
+| --- | --- | --- | --- |
+| `PGHOST` | - | `db` | PostgreSQL のホスト名 |
+| `PGPASSWORD` | - | `postgres` | PostgreSQL のパスワード（`db` コンテナの `POSTGRES_PASSWORD` にも使われる） |
+
+開発環境では添付ファイルはローカルディスク（`priv/uploads`）に保存するため、GCS関連の変数は不要。
+
+### テスト
+
+| 変数名 | 必須 | 既定値 | 説明 |
+| --- | --- | --- | --- |
+| `PGHOST` | - | `db` | PostgreSQL のホスト名 |
+| `MIX_TEST_PARTITION` | - | なし | テストDB名のサフィックス。`mix test --partitions` 使用時のみ |
+
 ## Learn more
 
 * Official website: https://www.phoenixframework.org/

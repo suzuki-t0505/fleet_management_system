@@ -5,27 +5,34 @@ defmodule CoreApp.Utils.Storage.Gcs do
   認証は `goth`（Cloud Run のサービスアカウント）で行い、バケットは
   `config :core_app, :storage, bucket: "..."` で指定します。
 
-  > **未検証**: 開発環境にサービスアカウントの認証情報が無いため、このアダプタは
-  > 実行経路を確認していません。本番設定を投入する際に疎通確認が必要です。
-  > 自動テストはローカルアダプタに対して書いています。
+  アップロードは**単純アップロード**（`uploadType=media`）で行います。生成クライアントの
+  `storage_objects_insert_simple/7`（`uploadType=multipart`）は使いません。`google_gax` が
+  `Tesla.Multipart` にフィールド名をアトムで渡すため、マルチパート境界の検証が入った
+  tesla では `FunctionClauseError` になるためです（`google_gax` は更新が止まっており、
+  最新の 0.4.1 でも同じ）。オブジェクト名は `name` クエリ、MIMEタイプは `Content-Type`
+  ヘッダで指定するため、単純アップロードでも必要な情報は揃います。
+
+  > **未検証**: 開発環境にサービスアカウントの認証情報が無いため、`read/1` と `delete/1` は
+  > 実行経路を確認していません。自動テストはローカルアダプタに対して書いています。
   """
   @behaviour CoreApp.Utils.Storage
 
   alias CoreApp.Utils.Storage
+  alias GoogleApi.Gax.Request
+  alias GoogleApi.Gax.Response
   alias GoogleApi.Storage.V1.Api.Objects
   alias GoogleApi.Storage.V1.Connection
+  alias GoogleApi.Storage.V1.Model.Object
 
   @impl CoreApp.Utils.Storage
   def put(key, source_path, content_type) do
+    # ファイル全体をメモリに読み込む。サイズの上限は `Attachments` が保存前に検証している。
     with {:ok, connection} <- connection(),
+         {:ok, data} <- File.read(source_path),
          {:ok, _object} <-
-           Objects.storage_objects_insert_simple(
-             connection,
-             bucket(),
-             "multipart",
-             %{name: key, contentType: content_type},
-             source_path
-           ) do
+           connection
+           |> Connection.execute(insert_request(key, content_type, data))
+           |> Response.decode(struct: %Object{}) do
       :ok
     end
   end
@@ -45,6 +52,18 @@ defmodule CoreApp.Utils.Storage.Gcs do
          {:ok, _empty} <- Objects.storage_objects_delete(connection, bucket(), key) do
       :ok
     end
+  end
+
+  defp insert_request(key, content_type, data) do
+    Request.new()
+    |> Request.method(:post)
+    |> Request.url("/upload/storage/v1/b/{bucket}/o", %{
+      "bucket" => URI.encode(bucket(), &URI.char_unreserved?/1)
+    })
+    |> Request.add_param(:query, :uploadType, "media")
+    |> Request.add_param(:query, :name, key)
+    |> Request.add_param(:header, "content-type", content_type)
+    |> Request.add_param(:body, :body, data)
   end
 
   defp connection do
