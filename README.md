@@ -30,3 +30,10 @@ docker push asia-northeast1-docker.pkg.dev/dulcet-radar-464207-v2/fleet-manageme
 ```bash
 docker compose exec db pg_dump --data-only --column-inserts -U postgres  -d core_app_dev > test.sql
 ```
+
+## メモ（ToDo）
+現状の変更をブランチを作成してコミット&プッシュ
+GCSを利用できるように設定
+メールを送信できるようにお名前メールの設定
+
+デプロイ

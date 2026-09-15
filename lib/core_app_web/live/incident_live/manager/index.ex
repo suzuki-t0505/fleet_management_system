@@ -44,6 +44,12 @@ defmodule CoreAppWeb.IncidentLive.Manager.Index do
         >
           未対応のみ表示
         </.link>
+        <.link
+          href={~p"/management/exports/incidents?#{@filters}"}
+          class="text-button rounded-md border border-hairline bg-surface px-4 py-2 text-ink hover:bg-canvas-soft"
+        >
+          CSV出力
+        </.link>
       </:actions>
 
       <div class="space-y-6">

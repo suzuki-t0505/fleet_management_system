@@ -160,7 +160,7 @@ defmodule CoreAppWeb.Layouts do
       %{label: "運転者", icon: "hero-identification", path: "/management/drivers"},
       %{label: "点検整備", icon: "hero-wrench-screwdriver", path: "/management/maintenances"},
       %{label: "期限アラート", icon: "hero-bell-alert", path: "/management/alerts"},
-      %{label: "集計", icon: "hero-chart-bar", path: nil}
+      %{label: "集計", icon: "hero-chart-bar", path: "/management/reports"}
     ]
 
     admin = [

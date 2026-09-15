@@ -51,6 +51,12 @@ defmodule CoreAppWeb.VehicleLive.Manager.Index do
         >
           車両を登録
         </.link>
+        <.link
+          href={~p"/management/exports/vehicles?#{@filters}"}
+          class="text-button rounded-md border border-hairline bg-surface px-4 py-2 text-ink hover:bg-canvas-soft"
+        >
+          CSV出力
+        </.link>
       </:actions>
 
       <div class="space-y-6">

@@ -59,6 +59,9 @@ defmodule CoreAppWeb.Router do
   scope "/management", CoreAppWeb do
     pipe_through [:browser, :require_manager_user]
 
+    get "/exports/reports/:report", ExportController, :download_report
+    get "/exports/:resource", ExportController, :download
+
     live_session :require_manager,
       on_mount: [{CoreAppWeb.UserAuth, :require_manager}] do
       scope "/vehicles", VehicleLive.Manager do
@@ -95,7 +98,7 @@ defmodule CoreAppWeb.Router do
         live "/:id", Show, :show
       end
 
-      # 集計の画面は機能実装時に追加する
+      live "/reports", ReportLive.Manager.Index, :index
     end
   end
 
