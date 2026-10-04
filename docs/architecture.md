@@ -387,6 +387,21 @@ UI の配色・タイポグラフィ・角丸・余白・コンポーネント�
 
 `DESIGN-notion.md` に定義のない部品が必要になった場合は、**先に `DESIGN-notion.md` へ追加してから実装する**（実装側で独自の値を決めない）。
 
+### 4.9 MCP（外部のAIクライアント向けAPI）
+
+Claude などの MCP クライアントから、配車表（Excel・スプレッドシート）の取り込みなどを行うための HTTP エンドポイント。
+
+| 項目 | 内容 |
+|------|------|
+| エンドポイント | `POST /mcp`（JSON-RPC 2.0、MCP Streamable HTTP）。GET・DELETE は 405 |
+| 実装 | 状態を持たない（stateless）自前実装。`CoreAppWeb.McpController`（`initialize` / `ping` / `tools/list` / `tools/call`）と `CoreAppWeb.Mcp.Tools`（ツールの登録）。MCPライブラリは使わない（リクエストごとに認証して `Scope` を作る必要があり、セッション状態を持つ実装と相性が悪いため） |
+| 認証 | `Authorization: Bearer <APIトークン>`（`CoreAppWeb.Plugs.McpAuth`）。トークンは `users_tokens` に context `"mcp"` で保存し、**DBにはSHA-256ハッシュのみ**（有効期間90日、無効化された利用者は不可）。発行は画面（`/management/api_tokens`、運行管理者以上が自分用に発行・失効。平文は発行直後の1回だけ表示。発行・失効は監査ログ `api_token` に記録）または `mix core_app.mcp.gen_token <メールアドレス>` |
+| 権限 | トークンの持ち主の `Scope` で実行する。MCPは**運行管理者以上**のみ。拠点の範囲・検証・監査ログは画面と同じ Context 関数が担う（監査ログの `ip_address` に接続元を記録） |
+| ツール | `list_vehicles` / `list_drivers` / `list_shippers`（マスタ照会）、`validate_dispatches`（保存しない検証）、`create_dispatches`（全行有効な場合のみ登録）、`list_dispatches`（参照） |
+| 取り込みの責務 | 表の読み取り・列の対応づけは MCP クライアント側。サーバーは名称→マスタIDの解決（`Dispatches.Import`）、検証、登録（`Dispatches.validate_import/2`・`import_dispatches/3`）だけを持つ |
+
+トークンは秘密情報として扱い、リポジトリにコミットしない。クライアント側の設定は [README](../README.md) の「MCP」を参照。
+
 ---
 
 ## 5. 設定と秘密情報

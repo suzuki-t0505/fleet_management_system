@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>要求 - MCPによる配車表の取り込み</title>
+<style>
+  :root { --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e; --ink-muted:#615d59;
+          --hairline:#e6e6e6; --primary:#0075de; --accent-green:#1aae39; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:980px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 8px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; text-align:left; padding:12px 16px; color:var(--ink-muted); }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  .st { display:inline-block; border-radius:9999px; padding:3px 10px; font-size:12px; font-weight:600; background:var(--accent-green); color:#fff; }
+  .id { font-weight:600; color:var(--ink); white-space:nowrap; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20261004-mcp-dispatch-import</div>
+<h1>要求：MCPによる配車表の取り込み</h1>
+<p style="color:var(--ink-muted)"><a href="requirements.html">requirements</a> ／ <a href="design.html">design</a> ／ <a href="tasklist.html">tasklist</a></p>
+
+<h2>背景</h2>
+<p>配車表は Excel・Google スプレッドシートで管理されており、システムへは1件ずつ画面から入力している。Claude などの MCP クライアントが表を読み、システムに配車を登録できるようにして二重入力をなくす（issue #8）。</p>
+
+<h2>要求</h2>
+<table>
+  <thead><tr><th style="width:64px">ID</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td class="id">R-1</td><td>MCP（HTTP）エンドポイントを Phoenix アプリに内蔵する</td></tr>
+    <tr><td class="id">R-2</td><td>利用者単位のAPIトークンで認証し、その利用者の権限・拠点（<code>Scope</code>）で実行する。MCPは運行管理者以上のみ</td></tr>
+    <tr><td class="id">R-3</td><td>配車表の行（荷主・車両・ドライバーは名称）を、保存せずに検証できる（dry run）</td></tr>
+    <tr><td class="id">R-4</td><td>マスタに無い荷主・車両・ドライバーは<strong>自動作成せず</strong>、行ごとのエラーで報告する</td></tr>
+    <tr><td class="id">R-5</td><td>全行が有効な場合のみ、まとめて登録する。再実行で二重登録しない</td></tr>
+    <tr><td class="id">R-6</td><td>登録は画面と同じ検証・監査ログを通る</td></tr>
+    <tr><td class="id">R-7</td><td>登録結果の確認用に、配車とマスタを参照できる</td></tr>
+      <tr><td class="id">R-8</td><td>APIトークンを画面から自分用に発行・失効できる（平文は発行直後の1回だけ表示）</td></tr>
+  </tbody>
+</table>
+
+<h2>対象外</h2>
+<ul>
+  <li>xlsx / スプレッドシートの解析（クライアント側で行う）</li>
+  <li>荷主・車両・ドライバーの自動作成</li>
+  <li>他人のトークンの管理（管理者がユーザーのトークンを発行・失効する機能）、トークンの名前付け・最終利用日時</li>
+  <li>配車の更新・取消し、期限アラート・売上集計などのMCP化（第2弾の候補）</li>
+</ul>
+</main>
+</body>
+</html>

@@ -17,6 +17,19 @@ defmodule CoreAppWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # MCP（外部のAIクライアント向け）。セッション・CSRFは使わず、APIトークンで毎回認証する
+  pipeline :mcp do
+    plug CoreAppWeb.Plugs.McpAuth
+  end
+
+  scope "/mcp", CoreAppWeb do
+    pipe_through :mcp
+
+    post "/", McpController, :handle
+    get "/", McpController, :not_allowed
+    delete "/", McpController, :not_allowed
+  end
+
   ## 一般利用者向け
 
   scope "/", CoreAppWeb do
@@ -113,6 +126,8 @@ defmodule CoreAppWeb.Router do
       end
 
       live "/alerts", AlertLive.Manager.Index, :index
+
+      live "/api_tokens", ApiTokenLive.Manager.Index, :index
 
       scope "/incidents", IncidentLive.Manager do
         live "/", Index, :index

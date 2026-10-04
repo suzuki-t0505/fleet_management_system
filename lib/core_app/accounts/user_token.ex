@@ -12,6 +12,7 @@ defmodule CoreApp.Accounts.UserToken do
   @magic_link_validity_in_minutes 15
   @change_email_validity_in_days 7
   @session_validity_in_days 14
+  @mcp_validity_in_days 90
 
   schema "users_tokens" do
     field :token, :binary
@@ -149,6 +150,70 @@ defmodule CoreApp.Accounts.UserToken do
       :error ->
         :error
     end
+  end
+
+  @doc """
+  MCP（外部のAIクライアント）からの接続に使うAPIトークンを作成します。
+
+  メールのトークンと同じく、利用者に渡すのは平文、DBに保存するのはハッシュです。
+  DBが漏れてもトークンは復元できません。
+  """
+  def build_mcp_token(user), do: build_hashed_token(user, "mcp", nil)
+
+  @doc """
+  MCPのAPIトークンの有効日数を返します。
+  """
+  def mcp_validity_in_days, do: @mcp_validity_in_days
+
+  @doc """
+  MCPのAPIトークンの有効期限を返します。
+  """
+  def mcp_expires_at(%UserToken{inserted_at: inserted_at}) do
+    DateTime.add(inserted_at, @mcp_validity_in_days, :day)
+  end
+
+  @doc """
+  利用者の、有効期限内のMCPのAPIトークンを探すクエリを返します。新しい順です。
+  """
+  def valid_mcp_tokens_query(user) do
+    from token in by_user_and_context_query(user, "mcp"),
+      where: token.inserted_at > ago(@mcp_validity_in_days, "day"),
+      order_by: [desc: token.inserted_at, desc: token.id]
+  end
+
+  @doc """
+  利用者のMCPのAPIトークンのうち、指定したIDのものを探すクエリを返します。
+  """
+  def mcp_token_by_id_query(user, id) do
+    from token in by_user_and_context_query(user, "mcp"), where: token.id == ^id
+  end
+
+  @doc """
+  MCPのAPIトークンが有効か確認し、検索クエリを返します（有効期限は#{@mcp_validity_in_days}日）。
+
+  クエリは該当する有効な（`active`）利用者を返します。
+  """
+  def verify_mcp_token_query(token) when is_binary(token) do
+    case Base.url_decode64(token, padding: false) do
+      {:ok, decoded_token} ->
+        hashed_token = :crypto.hash(@hash_algorithm, decoded_token)
+
+        query =
+          from token in by_token_and_context_query(hashed_token, "mcp"),
+            join: user in assoc(token, :user),
+            where: token.inserted_at > ago(@mcp_validity_in_days, "day"),
+            where: user.active,
+            select: user
+
+        {:ok, query}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp by_user_and_context_query(user, context) do
+    from UserToken, where: [user_id: ^user.id, context: ^context]
   end
 
   defp by_token_and_context_query(token, context) do

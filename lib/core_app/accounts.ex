@@ -476,6 +476,87 @@ defmodule CoreApp.Accounts do
     end
   end
 
+  ## MCP
+
+  @doc """
+  MCPのAPIトークンを発行します。平文のトークンはこの戻り値でしか取得できません。
+  """
+  def generate_mcp_token(%User{} = user) do
+    {token, user_token} = UserToken.build_mcp_token(user)
+    Repo.insert!(user_token)
+    token
+  end
+
+  @doc """
+  MCPのAPIトークンから利用者を取得します。無効・期限切れ・不正な値は `nil` を返します。
+  """
+  def get_user_by_mcp_token(token) when is_binary(token) do
+    with {:ok, query} <- UserToken.verify_mcp_token_query(token),
+         %User{} = user <- Repo.one(query) do
+      Repo.preload(user, [:office, :driver])
+    else
+      _other -> nil
+    end
+  end
+
+  def get_user_by_mcp_token(_token), do: nil
+
+  @doc """
+  自分のMCP用APIトークンのうち、有効期限内のものを新しい順に取得します。
+
+  保存しているのはハッシュのため、トークンの値は取得できません。
+  """
+  def list_mcp_tokens(%Scope{user: user}) do
+    user |> UserToken.valid_mcp_tokens_query() |> Repo.all()
+  end
+
+  @doc """
+  自分のMCP用APIトークンを発行し、監査ログを同一トランザクションで記録します。
+
+  `{:ok, {token, user_token}}` を返します。平文の `token` はこの戻り値でしか取得できません。
+  運行管理者以上のみ発行できます。それ以外は `{:error, :unauthorized}` を返します。
+  """
+  def create_mcp_token(%Scope{user: user} = scope, opts \\ []) do
+    if Scope.manager?(scope) do
+      {token, user_token} = UserToken.build_mcp_token(user)
+
+      Multi.new()
+      |> Multi.insert(:user_token, user_token)
+      |> AuditLogs.record_multi(:audit_log, scope, :create, &{"api_token", &1.user_token}, opts)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{user_token: user_token}} -> {:ok, {token, user_token}}
+      end
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  自分のMCP用APIトークンを失効（削除）し、監査ログを同一トランザクションで記録します。
+
+  他人のトークンや存在しないIDは `{:error, :not_found}` を返します。
+  """
+  def revoke_mcp_token(scope, id, opts \\ [])
+
+  def revoke_mcp_token(%Scope{user: user} = scope, <<_::208>> = id, opts) do
+    case Repo.one(UserToken.mcp_token_by_id_query(user, id)) do
+      nil ->
+        {:error, :not_found}
+
+      %UserToken{} = user_token ->
+        Multi.new()
+        |> Multi.delete(:user_token, user_token)
+        |> AuditLogs.record_multi(:audit_log, scope, :delete, &{"api_token", &1.user_token}, opts)
+        |> Repo.transaction()
+        |> case do
+          {:ok, %{user_token: user_token}} -> {:ok, user_token}
+        end
+    end
+  end
+
+  def revoke_mcp_token(_scope, _id, _opts), do: {:error, :not_found}
+
   @doc """
   Gets the user with the given magic link token.
   """
