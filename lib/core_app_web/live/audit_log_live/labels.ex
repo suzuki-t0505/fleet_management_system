@@ -22,7 +22,8 @@ defmodule CoreAppWeb.AuditLogLive.Labels do
     {"荷主", "shipper"},
     {"配車", "dispatch"},
     {"事故・ヒヤリ", "incident"},
-    {"ユーザー", "user"}
+    {"ユーザー", "user"},
+    {"APIトークン", "api_token"}
   ]
 
   @doc """

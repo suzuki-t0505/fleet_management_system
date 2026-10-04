@@ -9,6 +9,25 @@ Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 
 Ready to run in production? Please [check our deployment guides](https://phoenix.hexdocs.pm/deployment.html).
 
+## MCP
+
+Claude などの MCP クライアントから、配車表（Excel・スプレッドシート）を読み取って配車を登録できる。仕様は [docs/architecture.md](docs/architecture.md) 4.9、取り込みのルールは [docs/functional-design.md](docs/functional-design.md) 6.8。
+
+1. 運行管理者以上でログインし、サイドバー下部の「APIトークン」（`/management/api_tokens`）から「トークンを発行」を押す。表示は発行直後の1回だけ（コミットしない）。画面から失効もできる。
+   CLIで発行する場合:
+
+   ```bash
+   docker compose run --rm web mix core_app.mcp.gen_token manager@example.com
+   ```
+
+2. Claude Code にサーバーを登録する（トークンは環境変数 `FLEET_MCP_TOKEN` で渡す）
+
+   ```bash
+   claude mcp add --transport http fleet http://localhost:4000/mcp --header "Authorization: Bearer $FLEET_MCP_TOKEN"
+   ```
+
+3. 配車表のファイルを指定して依頼する。Claude が表を読み、`list_*` で名称を確認し、`validate_dispatches` の結果を見せてから `create_dispatches` で登録する。マスタに無い荷主・車両・ドライバーは登録せずエラーで報告する。
+
 ## 環境変数
 
 ### 本番（`MIX_ENV=prod` / Cloud Run）

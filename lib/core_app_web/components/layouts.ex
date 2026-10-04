@@ -108,6 +108,13 @@ defmodule CoreAppWeb.Layouts do
               設定
             </.link>
             <.link
+              :if={Scope.manager?(@current_scope)}
+              navigate={~p"/management/api_tokens"}
+              class="text-caption text-ink-muted hover:text-primary"
+            >
+              APIトークン
+            </.link>
+            <.link
               href={~p"/users/log-out"}
               method="delete"
               class="text-caption text-ink-muted hover:text-primary"

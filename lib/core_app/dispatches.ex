@@ -19,8 +19,12 @@ defmodule CoreApp.Dispatches do
   alias CoreApp.Dispatches.Board
   alias CoreApp.Dispatches.Delivery
   alias CoreApp.Dispatches.Dispatch
+  alias CoreApp.Dispatches.Import
+  alias CoreApp.Drivers
   alias CoreApp.Drivers.Driver
+  alias CoreApp.Shippers
   alias CoreApp.Shippers.Shipper
+  alias CoreApp.Vehicles
   alias CoreApp.Vehicles.Vehicle
 
   alias CoreApp.Accounts.Scope
@@ -29,6 +33,7 @@ defmodule CoreApp.Dispatches do
   alias CoreApp.Utils.Pagination
 
   @resource_type "dispatch"
+  @max_import_rows 200
   @preloads [:office, :shipper, :vehicle, :driver, :deliveries]
 
   @doc """
@@ -205,6 +210,215 @@ defmodule CoreApp.Dispatches do
 
   defp exclude_self(query, nil), do: query
   defp exclude_self(query, dispatch_id), do: where(query, [d], d.id != ^dispatch_id)
+
+  @doc """
+  1回の取り込みで受け付ける最大行数を返します。
+  """
+  def max_import_rows, do: @max_import_rows
+
+  @doc """
+  表計算ソフトなどの配車表の行（荷主・車両・ドライバーを名称で指定）を検証します。**保存はしません**。
+
+  名称をマスタのIDに解決し、画面と同じ検証（`change_dispatch/3`）、時間帯が重なる配車の警告、
+  同じ配車の二重登録の検知までを行います。行ごとの結果のリストを返します。
+
+  - `errors` が空でない行は登録できません
+  - `warnings` は登録できますが、確認すべき事項です
+
+  運行管理者以上のみ使えます。それ以外は `{:error, :unauthorized}` を返します。
+  `rows` が空、または `max_import_rows/0` を超える場合は、それぞれ `{:error, :empty}`、
+  `{:error, :too_many_rows}` を返します。
+
+  行の形は `CoreApp.Dispatches.Import.resolve/2` を参照してください。
+  """
+  def validate_import(%Scope{} = scope, rows) when is_list(rows) do
+    with :ok <- ensure_manager(scope),
+         :ok <- ensure_import_size(rows) do
+      masters = %{
+        vehicles: Vehicles.all_selectable_vehicles(scope),
+        drivers: Drivers.all_selectable_drivers(scope),
+        shippers: Shippers.all_selectable_shippers(scope)
+      }
+
+      results =
+        rows
+        |> Enum.with_index(1)
+        |> Enum.map(fn {row, index} -> validate_row(scope, row, index, masters) end)
+        |> flag_batch_conflicts()
+
+      {:ok, results}
+    end
+  end
+
+  @doc """
+  配車表の行を検証し、**すべての行が有効な場合だけ**1トランザクションで登録します。
+
+  1行でもエラーがあれば何も登録せず `{:error, {:invalid, results}}` を返します。同じ行を再度
+  取り込んでも、二重登録の検知で止まります。
+
+  登録した配車は監査ログに記録されます。`opts` は `create_dispatch/3` と同じです。
+  """
+  def import_dispatches(%Scope{} = scope, rows, opts \\ []) do
+    with {:ok, results} <- validate_import(scope, rows) do
+      if Enum.any?(results, &(&1.errors != [])) do
+        {:error, {:invalid, results}}
+      else
+        insert_imported(scope, results, opts)
+      end
+    end
+  end
+
+  defp ensure_import_size([]), do: {:error, :empty}
+
+  defp ensure_import_size(rows) when length(rows) > @max_import_rows,
+    do: {:error, :too_many_rows}
+
+  defp ensure_import_size(_rows), do: :ok
+
+  defp validate_row(scope, row, index, masters) when is_map(row) do
+    base = %{
+      index: index,
+      ref: row["ref"],
+      attrs: nil,
+      refs: nil,
+      slot: nil,
+      total_amount_yen: nil,
+      dispatch: nil,
+      errors: [],
+      warnings: []
+    }
+
+    case Import.resolve(row, masters) do
+      {:error, errors} ->
+        %{base | errors: errors}
+
+      {:ok, attrs, refs} ->
+        changeset = change_dispatch(%Dispatch{deliveries: []}, scope, attrs)
+        resolved = %{base | attrs: attrs, refs: refs}
+
+        if changeset.valid? do
+          slot = slot_of(changeset)
+
+          %{
+            resolved
+            | slot: slot,
+              total_amount_yen: total_amount_yen(changeset),
+              errors: duplicate_errors(slot),
+              warnings: warnings(scope, changeset)
+          }
+        else
+          %{resolved | errors: Import.format_errors(changeset)}
+        end
+    end
+  end
+
+  defp validate_row(_scope, _row, index, _masters) do
+    %{
+      index: index,
+      ref: nil,
+      attrs: nil,
+      refs: nil,
+      slot: nil,
+      total_amount_yen: nil,
+      dispatch: nil,
+      errors: ["行はオブジェクトで指定してください"],
+      warnings: []
+    }
+  end
+
+  defp slot_of(changeset) do
+    %{
+      vehicle_id: Ecto.Changeset.get_field(changeset, :vehicle_id),
+      driver_id: Ecto.Changeset.get_field(changeset, :driver_id),
+      started_at: Ecto.Changeset.get_field(changeset, :started_at),
+      ended_at: Ecto.Changeset.get_field(changeset, :ended_at),
+      title: Ecto.Changeset.get_field(changeset, :title)
+    }
+  end
+
+  # 同じ車両・ドライバー・開始日時・タイトルの配車があれば同じ配車とみなす（再取り込みの二重登録を防ぐ）
+  defp duplicate_errors(slot) do
+    duplicated? =
+      Repo.exists?(
+        from d in Dispatch,
+          where:
+            d.vehicle_id == ^slot.vehicle_id and d.driver_id == ^slot.driver_id and
+              d.started_at == ^slot.started_at and d.title == ^slot.title
+      )
+
+    if duplicated?, do: ["同じ車両・ドライバー・開始日時・タイトルの配車が既に登録されています"], else: []
+  end
+
+  # 入力の行どうしの重複・時間帯の重なり。保存前なので `warnings/2` では見つけられない。
+  defp flag_batch_conflicts(results) do
+    {flagged, _earlier} =
+      Enum.map_reduce(results, [], fn result, earlier ->
+        flagged = flag_against(result, earlier)
+        {flagged, if(result.slot, do: [result | earlier], else: earlier)}
+      end)
+
+    flagged
+  end
+
+  defp flag_against(%{slot: nil} = result, _earlier), do: result
+
+  defp flag_against(result, earlier) do
+    Enum.reduce(Enum.reverse(earlier), result, fn other, acc ->
+      acc
+      |> flag_same_dispatch(other)
+      |> flag_overlap(other, :vehicle_id, "車両")
+      |> flag_overlap(other, :driver_id, "ドライバー")
+    end)
+  end
+
+  defp flag_same_dispatch(%{slot: slot} = result, %{slot: other_slot} = other) do
+    if Map.take(slot, [:vehicle_id, :driver_id, :started_at, :title]) ==
+         Map.take(other_slot, [:vehicle_id, :driver_id, :started_at, :title]) do
+      %{result | errors: result.errors ++ ["入力内の#{other.index}行目と同じ配車です"]}
+    else
+      result
+    end
+  end
+
+  defp flag_overlap(%{slot: slot} = result, %{slot: other_slot} = other, field, label) do
+    if Map.fetch!(slot, field) == Map.fetch!(other_slot, field) and
+         DateTime.before?(slot.started_at, other_slot.ended_at) and
+         DateTime.after?(slot.ended_at, other_slot.started_at) do
+      %{result | warnings: result.warnings ++ ["入力内の#{other.index}行目と同じ#{label}で時間帯が重なります"]}
+    else
+      result
+    end
+  end
+
+  defp insert_imported(scope, results, opts) do
+    case Repo.transaction(fn -> Enum.map(results, &insert_row(scope, &1, opts)) end) do
+      {:ok, created} ->
+        {:ok, created}
+
+      {:error, {failed, errors}} ->
+        {:error, {:invalid, Enum.map(results, &mark_failed(&1, failed, errors))}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp insert_row(scope, result, opts) do
+    case create_dispatch(scope, result.attrs, opts) do
+      {:ok, dispatch} ->
+        %{result | dispatch: dispatch}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        Repo.rollback({result, Import.format_errors(changeset)})
+
+      {:error, reason} ->
+        Repo.rollback(reason)
+    end
+  end
+
+  defp mark_failed(result, failed, errors) do
+    if result.index == failed.index, do: %{result | errors: errors}, else: result
+  end
 
   defp scoped(query, %Scope{role: :admin}), do: query
 

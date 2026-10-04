@@ -34,6 +34,12 @@ const liveSocket = new LiveSocket("/live", Socket, {
 
 // Show progress bar on live navigation and form submits
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
+// 要素のテキストをクリップボードにコピーする（JS.dispatch("phx:copy", to: "#id") から呼ぶ）
+window.addEventListener("phx:copy", event => {
+  const text = event.target.textContent.trim()
+  if (navigator.clipboard) navigator.clipboard.writeText(text)
+})
+
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 

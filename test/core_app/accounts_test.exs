@@ -3,6 +3,8 @@ defmodule CoreApp.AccountsTest do
 
   alias CoreApp.Accounts
 
+  import Ecto.Query, warn: false
+
   import CoreApp.AccountsFixtures
   import CoreApp.OfficesFixtures
 
@@ -388,6 +390,99 @@ defmodule CoreApp.AccountsTest do
       dt = ~N[2020-01-01 00:00:00]
       {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt, authenticated_at: dt])
       refute Accounts.get_user_by_session_token(token)
+    end
+  end
+
+  describe "generate_mcp_token/1 と get_user_by_mcp_token/1" do
+    setup do
+      user = user_fixture()
+      %{user: user, token: Accounts.generate_mcp_token(user)}
+    end
+
+    test "発行したトークンで利用者を取得できる", %{user: user, token: token} do
+      assert %User{id: id} = Accounts.get_user_by_mcp_token(token)
+      assert id == user.id
+    end
+
+    test "DBにはハッシュを保存し、平文は保存しない", %{token: token} do
+      {:ok, decoded} = Base.url_decode64(token, padding: false)
+      stored = Repo.one!(from t in UserToken, where: t.context == "mcp", select: t.token)
+
+      refute stored == decoded
+      assert stored == :crypto.hash(:sha256, decoded)
+    end
+
+    test "不正な値・期限切れ・無効な利用者は取得できない", %{user: user, token: token} do
+      refute Accounts.get_user_by_mcp_token("oops")
+      refute Accounts.get_user_by_mcp_token(nil)
+
+      {1, nil} =
+        Repo.update_all(from(t in UserToken, where: t.context == "mcp"),
+          set: [inserted_at: DateTime.add(DateTime.utc_now(:second), -91, :day)]
+        )
+
+      refute Accounts.get_user_by_mcp_token(token)
+
+      fresh = Accounts.generate_mcp_token(user)
+      assert Accounts.get_user_by_mcp_token(fresh)
+
+      user |> Ecto.Changeset.change(active: false) |> Repo.update!()
+      refute Accounts.get_user_by_mcp_token(fresh)
+    end
+  end
+
+  describe "list_mcp_tokens/1・create_mcp_token/2・revoke_mcp_token/3" do
+    setup do
+      %{scope: manager_fixture() |> Scope.for_user()}
+    end
+
+    test "発行したトークンは自分の一覧に出て、平文で認証できる", %{scope: scope} do
+      assert {:ok, {token, %UserToken{context: "mcp"} = user_token}} =
+               Accounts.create_mcp_token(scope)
+
+      assert [%UserToken{id: id}] = Accounts.list_mcp_tokens(scope)
+      assert id == user_token.id
+      assert Accounts.get_user_by_mcp_token(token).id == scope.user.id
+    end
+
+    test "期限切れは一覧に出ず、他人のトークンも出ない", %{scope: scope} do
+      {:ok, _} = Accounts.create_mcp_token(scope)
+      {:ok, _} = Accounts.create_mcp_token(manager_fixture() |> Scope.for_user())
+
+      Repo.update_all(UserToken,
+        set: [inserted_at: DateTime.add(DateTime.utc_now(:second), -91, :day)]
+      )
+
+      {:ok, {_token, fresh}} = Accounts.create_mcp_token(scope)
+
+      assert [%UserToken{id: id}] = Accounts.list_mcp_tokens(scope)
+      assert id == fresh.id
+    end
+
+    test "運行管理者未満は発行できない" do
+      member = user_fixture(%{role: :member}) |> Scope.for_user()
+
+      assert Accounts.create_mcp_token(member) == {:error, :unauthorized}
+    end
+
+    test "失効すると使えなくなる。他人のトークンと不正なIDは失効できない", %{scope: scope} do
+      {:ok, {token, user_token}} = Accounts.create_mcp_token(scope)
+      other = manager_fixture() |> Scope.for_user()
+
+      assert Accounts.revoke_mcp_token(other, user_token.id) == {:error, :not_found}
+      assert Accounts.revoke_mcp_token(scope, "invalid") == {:error, :not_found}
+      assert Accounts.get_user_by_mcp_token(token)
+
+      assert {:ok, _} = Accounts.revoke_mcp_token(scope, user_token.id)
+      refute Accounts.get_user_by_mcp_token(token)
+      assert Accounts.list_mcp_tokens(scope) == []
+    end
+
+    test "セッションのトークンは失効の対象にならない", %{scope: scope} do
+      Accounts.generate_user_session_token(scope.user)
+      session_token = Repo.one!(from t in UserToken, where: t.context == "session")
+
+      assert Accounts.revoke_mcp_token(scope, session_token.id) == {:error, :not_found}
     end
   end
 
