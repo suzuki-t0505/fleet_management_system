@@ -4,14 +4,17 @@ defmodule CoreApp.Reports do
 
   集計クエリだけを持つ読み取り専用のContextです。スキーマは持ちません。
 
-  集計対象は**承認済みの日報のみ**（functional-design.md 8.2）。月は JST の
-  運行日・実施日・発生日で切ります。
+  走行距離・燃費は**承認済みの日報のみ**（functional-design.md 8.2）、配車売上は
+  承認の概念が無いため**すべての配車**を集計します。月は JST の運行日・実施日・
+  発生日・配送開始日で切ります。
   """
 
   import Ecto.Query, warn: false
   alias CoreApp.Repo
 
   alias CoreApp.Accounts.Scope
+  alias CoreApp.Dispatches.Delivery
+  alias CoreApp.Dispatches.Dispatch
   alias CoreApp.Incidents.Incident
   alias CoreApp.Maintenances.Maintenance
   alias CoreApp.Offices.Office
@@ -26,11 +29,16 @@ defmodule CoreApp.Reports do
   # CSV出力時に打ち切る行数
   @max_export_rows 50_000
 
-  @report_types ~w(distance fuel maintenance_cost incident)a
+  @report_types ~w(distance fuel maintenance_cost incident dispatch_revenue)a
 
   # 日付を月初に丸める（JSTの日付カラムに対して使う）
   defmacrop month_of(field) do
     quote do: fragment("date_trunc('month', ?)::date", unquote(field))
+  end
+
+  # UTC保存の日時をJSTの月初（日付）に丸める
+  defmacrop jst_month_of(field) do
+    quote do: fragment("date_trunc('month', (? + interval '9 hours'))::date", unquote(field))
   end
 
   @doc """
@@ -63,6 +71,19 @@ defmodule CoreApp.Reports do
   事故・ヒヤリを月 × 拠点 × 区分で集計し、改善報告の完了率を算出します。
   """
   def incident_report(%Scope{} = scope, params \\ %{}), do: paginated(scope, :incident, params)
+
+  @doc """
+  配車の売上を月 × 軸で集計します。売上は運賃 + 高速料金です（D-2）。
+
+  運賃は料金方式に従い、コース一括はコース料金、配送ごとは配送明細の配送料金の合計です。
+  月は配送開始日時（JST）で切ります。
+
+  ## params
+  - `axis` 集計軸（`shipper` / `vehicle` / `driver` / `office`。既定は `shipper`）
+  """
+  def dispatch_revenue_report(%Scope{} = scope, params \\ %{}) do
+    paginated(scope, :dispatch_revenue, params)
+  end
 
   @doc """
   集計結果をページネーションせずにすべて返します。CSV出力に使います。
@@ -170,6 +191,29 @@ defmodule CoreApp.Reports do
       closed_count: filter(count(i.id), i.status == :closed)
     })
     |> ordered_rows()
+  end
+
+  defp rows_query(scope, :dispatch_revenue, params) do
+    {from, to} = period(params)
+
+    deliveries =
+      from(del in Delivery,
+        group_by: del.dispatch_id,
+        select: %{dispatch_id: del.dispatch_id, fare_total: sum(del.fare_yen)}
+      )
+
+    Dispatch
+    |> where([d], fragment("(? + interval '9 hours')::date", d.started_at) >= ^from)
+    |> where([d], fragment("(? + interval '9 hours')::date", d.started_at) <= ^to)
+    |> scoped_office(scope)
+    |> filter_dispatches_by_office(scope, params["office_id"])
+    |> join(:left, [d], dl in subquery(deliveries), on: dl.dispatch_id == d.id, as: :deliveries)
+    |> revenue_grouped(axis(params, :shipper))
+    |> ordered_rows()
+  end
+
+  defp post_process(:dispatch_revenue, row) do
+    Map.put(row, :total_yen, row.fare_yen + row.toll_yen)
   end
 
   defp post_process(:fuel, row), do: put_km_per_liter(row)
@@ -323,6 +367,55 @@ defmodule CoreApp.Reports do
     })
   end
 
+  # 配車売上の集計軸。運賃は料金方式で決まる（Dispatch.fare_yen/3 と同じ規則をSQLで集計する）。
+  defmacrop fare_sum(d, dl) do
+    quote do
+      fragment(
+        "COALESCE(SUM(CASE WHEN ? = 'per_delivery' THEN COALESCE(?, 0) ELSE COALESCE(?, 0) END), 0)::bigint",
+        unquote(d).pricing_type,
+        unquote(dl).fare_total,
+        unquote(d).course_fare_yen
+      )
+    end
+  end
+
+  defp revenue_grouped(query, :vehicle) do
+    query
+    |> join(:inner, [d], v in assoc(d, :vehicle), as: :key)
+    |> group_by([d, key: k], [jst_month_of(d.started_at), k.id, k.plate_number])
+    |> select([d, key: k, deliveries: dl], %{
+      month: jst_month_of(d.started_at),
+      key_id: k.id,
+      key_name: k.plate_number,
+      dispatch_count: count(d.id),
+      fare_yen: fare_sum(d, dl),
+      toll_yen: coalesce(type(sum(d.toll_yen), :integer), 0)
+    })
+  end
+
+  defp revenue_grouped(query, axis) do
+    query
+    |> revenue_join(axis)
+    |> group_by([d, key: k], [jst_month_of(d.started_at), k.id, k.name])
+    |> select([d, key: k, deliveries: dl], %{
+      month: jst_month_of(d.started_at),
+      key_id: k.id,
+      key_name: k.name,
+      dispatch_count: count(d.id),
+      fare_yen: fare_sum(d, dl),
+      toll_yen: coalesce(type(sum(d.toll_yen), :integer), 0)
+    })
+  end
+
+  defp revenue_join(query, :driver),
+    do: join(query, :inner, [d], k in assoc(d, :driver), as: :key)
+
+  defp revenue_join(query, :office),
+    do: join(query, :inner, [d], k in assoc(d, :office), as: :key)
+
+  defp revenue_join(query, _shipper),
+    do: join(query, :inner, [d], k in assoc(d, :shipper), as: :key)
+
   # group_by したクエリはそのまま数えると「グループごとの件数」が返るため、
   # subquery で包んでから並べ替える。
   defp ordered_rows(query) do
@@ -380,6 +473,7 @@ defmodule CoreApp.Reports do
       "vehicle" -> :vehicle
       "driver" -> :driver
       "office" -> :office
+      "shipper" -> :shipper
       _other -> default
     end
   end
@@ -423,6 +517,13 @@ defmodule CoreApp.Reports do
   end
 
   defp filter_maintenances_by_office(query, _scope, _office_id), do: query
+
+  defp filter_dispatches_by_office(query, %Scope{role: :admin}, office_id)
+       when is_binary(office_id) and office_id != "" do
+    where(query, [d], d.office_id == ^office_id)
+  end
+
+  defp filter_dispatches_by_office(query, _scope, _office_id), do: query
 
   defp filter_incidents_by_office(query, %Scope{role: :admin}, office_id)
        when is_binary(office_id) and office_id != "" do

@@ -5,6 +5,8 @@ defmodule CoreAppWeb.ExportColumns do
   列挙値の日本語化は各画面の `Labels` と同じものを使い、画面とCSVで表記がずれないようにします。
   """
 
+  alias CoreApp.Dispatches.Dispatch
+  alias CoreAppWeb.DispatchLive.Labels, as: DispatchLabels
   alias CoreAppWeb.DriverLive.Labels, as: DriverLabels
   alias CoreAppWeb.IncidentLive.Labels, as: IncidentLabels
   alias CoreAppWeb.MaintenanceLive.Labels, as: MaintenanceLabels
@@ -89,6 +91,24 @@ defmodule CoreAppWeb.ExportColumns do
       "対策内容",
       "対策実施予定日",
       "実施責任者"
+    ],
+    dispatches: [
+      "配送開始日時",
+      "配送終了日時",
+      "配送タイトル",
+      "配送説明",
+      "拠点",
+      "荷主",
+      "車両番号",
+      "ドライバー",
+      "料金方式",
+      "コース料金(円)",
+      "配送料金合計(円)",
+      "高速料金(円)",
+      "受取金額合計(円)",
+      "配送先",
+      "荷積み時刻",
+      "荷降ろし時刻"
     ]
   }
 
@@ -96,14 +116,16 @@ defmodule CoreAppWeb.ExportColumns do
     distance: ["月", "対象", "走行距離(km)", "稼働日数", "日報件数"],
     fuel: ["月", "車両番号", "走行距離(km)", "給油量(L)", "燃費(km/L)", "給油金額(円)"],
     maintenance_cost: ["月", "対象", "区分", "費用(円)", "件数"],
-    incident: ["月", "拠点", "区分", "発生件数", "改善報告完了", "完了率(%)"]
+    incident: ["月", "拠点", "区分", "発生件数", "改善報告完了", "完了率(%)"],
+    dispatch_revenue: ["月", "対象", "配車件数", "運賃(円)", "高速料金(円)", "売上合計(円)"]
   }
 
   @report_filenames %{
     distance: "走行距離集計",
     fuel: "燃費集計",
     maintenance_cost: "整備費集計",
-    incident: "事故ヒヤリ集計"
+    incident: "事故ヒヤリ集計",
+    dispatch_revenue: "配車売上集計"
   }
 
   @filenames %{
@@ -111,7 +133,8 @@ defmodule CoreAppWeb.ExportColumns do
     drivers: "運転者一覧",
     operation_reports: "運行日報",
     maintenances: "点検整備記録",
-    incidents: "事故ヒヤリ記録"
+    incidents: "事故ヒヤリ記録",
+    dispatches: "配車一覧"
   }
 
   @doc """
@@ -165,6 +188,17 @@ defmodule CoreAppWeb.ExportColumns do
       row.total_count,
       row.closed_count,
       row.completion_rate
+    ]
+  end
+
+  def report_values(:dispatch_revenue, row) do
+    [
+      month(row.month),
+      row.key_name,
+      row.dispatch_count,
+      row.fare_yen,
+      row.toll_yen,
+      row.total_yen
     ]
   end
 
@@ -274,6 +308,31 @@ defmodule CoreAppWeb.ExportColumns do
       row.countermeasure,
       row.countermeasure_due_on,
       row.countermeasure_owner
+    ]
+  end
+
+  # 受取金額の規則（D-2）は Dispatch に集約している。CSVは配送明細を結合した値で計算する。
+  def values(:dispatches, row) do
+    fare_yen =
+      Dispatch.fare_yen(row.pricing_type, row.course_fare_yen, row.deliveries_fare_total_yen)
+
+    [
+      StatusComponents.format_datetime(row.started_at),
+      StatusComponents.format_datetime(row.ended_at),
+      row.title,
+      row.description,
+      row.office_name,
+      row.shipper_name,
+      row.plate_number,
+      row.driver_name,
+      DispatchLabels.pricing_type(row.pricing_type),
+      row.course_fare_yen,
+      if(row.pricing_type == :per_delivery, do: fare_yen),
+      row.toll_yen,
+      fare_yen + (row.toll_yen || 0),
+      row.destinations,
+      row.loading_times,
+      row.unloading_times
     ]
   end
 end

@@ -151,6 +151,8 @@ defmodule CoreAppWeb.Layouts do
   defp nav_items(scope) do
     base = [
       %{label: "ダッシュボード", icon: "hero-home", path: "/"},
+      %{label: "配車", icon: "hero-calendar-days", path: dispatches_path(scope)},
+      %{label: "配車表", icon: "hero-view-columns", path: dispatch_board_path(scope)},
       %{label: "運行日報", icon: "hero-document-text", path: operation_reports_path(scope)},
       %{label: "事故・ヒヤリ", icon: "hero-exclamation-triangle", path: incidents_path(scope)},
       %{label: "車両", icon: "hero-truck", path: vehicles_path(scope)}
@@ -158,6 +160,7 @@ defmodule CoreAppWeb.Layouts do
 
     manager = [
       %{label: "運転者", icon: "hero-identification", path: "/management/drivers"},
+      %{label: "荷主", icon: "hero-building-storefront", path: "/management/shippers"},
       %{label: "点検整備", icon: "hero-wrench-screwdriver", path: "/management/maintenances"},
       %{label: "期限アラート", icon: "hero-bell-alert", path: "/management/alerts"},
       %{label: "集計", icon: "hero-chart-bar", path: "/management/reports"}
@@ -178,6 +181,14 @@ defmodule CoreAppWeb.Layouts do
 
   defp operation_reports_path(scope) do
     if Scope.manager?(scope), do: "/management/operation_reports", else: "/operation_reports"
+  end
+
+  defp dispatches_path(scope) do
+    if Scope.manager?(scope), do: "/management/dispatches", else: "/dispatches"
+  end
+
+  defp dispatch_board_path(scope) do
+    if Scope.manager?(scope), do: "/management/dispatches/board", else: "/dispatches/board"
   end
 
   defp incidents_path(scope) do

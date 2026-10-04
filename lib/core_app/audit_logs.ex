@@ -112,6 +112,9 @@ defmodule CoreApp.AuditLogs do
     to_string(value)
   end
 
+  # 子レコード（has_many の changeset）は変更内容だけを保存する
+  defp serialize(%Ecto.Changeset{} = changeset), do: changes_of(changeset)
+  defp serialize(values) when is_list(values), do: Enum.map(values, &serialize/1)
   defp serialize(value), do: value
 
   defp filter_by_resource_type(query, nil), do: query

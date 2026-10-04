@@ -18,7 +18,8 @@ defmodule CoreAppWeb.ExportController do
     drivers: "/management/drivers",
     operation_reports: "/management/operation_reports",
     maintenances: "/management/maintenances",
-    incidents: "/management/incidents"
+    incidents: "/management/incidents",
+    dispatches: "/management/dispatches"
   }
 
   def download(conn, %{"resource" => resource} = params) do
