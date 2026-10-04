@@ -7,10 +7,12 @@
 
 alias CoreApp.Accounts
 alias CoreApp.Accounts.Scope
+alias CoreApp.Dispatches
 alias CoreApp.Incidents
 alias CoreApp.Offices
 alias CoreApp.Drivers
 alias CoreApp.OperationReports
+alias CoreApp.Shippers
 alias CoreApp.Vehicles
 alias CoreApp.Utils.ConvertDatetime
 
@@ -423,5 +425,171 @@ for {attrs, index} <- Enum.with_index(incidents) do
     IO.puts("created incident: #{incident.place} (#{incident.status})")
   else
     IO.puts("skipped incident: #{attrs["place"]}")
+  end
+end
+
+# --- 荷主・配車 ---
+# コース一括と配送ごとの2方式をそろえ、一覧・詳細・売上集計の確認に使えるようにする。
+shipper_seeds = ["北海道物流", "九州運輸"]
+
+shippers =
+  for name <- shipper_seeds, into: %{} do
+    existing = Shippers.list_shippers(admin_scope, %{"q" => name, "status" => "all"}).entries
+
+    shipper =
+      case existing do
+        [shipper | _] ->
+          IO.puts("skipped shipper: #{name}")
+          shipper
+
+        [] ->
+          {:ok, shipper} =
+            Shippers.create_shipper(admin_scope, %{
+              "office_id" => offices["TKY"].id,
+              "name" => name,
+              "code" => "SH-#{System.unique_integer([:positive])}"
+            })
+
+          IO.puts("created shipper: #{name}")
+          shipper
+      end
+
+    {name, shipper}
+  end
+
+if tky_vehicle && tky_driver do
+  today = ConvertDatetime.today()
+
+  dispatch_seeds = [
+    %{
+      "title" => "朝便 都内ルートA（コース一括）",
+      "shipper" => "北海道物流",
+      "days_ago" => 2,
+      "pricing_type" => "course_total",
+      "course_fare_yen" => "30000",
+      "toll_yen" => "1500",
+      "deliveries" => [{"東京都港区", nil}, {"東京都品川区", nil}]
+    },
+    %{
+      "title" => "夕便 横浜方面（配送ごと）",
+      "shipper" => "九州運輸",
+      "days_ago" => 1,
+      "pricing_type" => "per_delivery",
+      "course_fare_yen" => nil,
+      "toll_yen" => "800",
+      "deliveries" => [{"神奈川県横浜市", "12000"}, {"神奈川県川崎市", "9000"}]
+    }
+  ]
+
+  for attrs <- dispatch_seeds do
+    if Dispatches.list_dispatches(admin_scope, %{"q" => attrs["title"]}).total_entries == 0 do
+      date = Date.add(today, -attrs["days_ago"])
+
+      deliveries =
+        attrs["deliveries"]
+        |> Enum.with_index()
+        |> Map.new(fn {{destination, fare}, index} ->
+          {to_string(index), %{"destination" => destination, "fare_yen" => fare}}
+        end)
+
+      {:ok, dispatch} =
+        Dispatches.create_dispatch(admin_scope, %{
+          "title" => attrs["title"],
+          "description" => "シードデータの配車です",
+          "shipper_id" => shippers[attrs["shipper"]].id,
+          "vehicle_id" => tky_vehicle.id,
+          "driver_id" => tky_driver.id,
+          "started_at" => "#{date}T09:00",
+          "ended_at" => "#{date}T15:00",
+          "pricing_type" => attrs["pricing_type"],
+          "course_fare_yen" => attrs["course_fare_yen"],
+          "toll_yen" => attrs["toll_yen"],
+          "deliveries" => deliveries
+        })
+
+      IO.puts("created dispatch: #{dispatch.title}")
+    else
+      IO.puts("skipped dispatch: #{attrs["title"]}")
+    end
+  end
+end
+
+# --- 配車表の確認用（荷積み・荷降ろし時刻、時間の重なり、日付またぎ） ---
+if tky_vehicle && tky_driver do
+  today = ConvertDatetime.today()
+  tomorrow = Date.add(today, 1)
+
+  board_seeds = [
+    %{
+      "title" => "【配車表】午前 都内3軒（荷積み・荷降ろしあり）",
+      "shipper" => "北海道物流",
+      "from" => {today, "08:00"},
+      "to" => {today, "13:00"},
+      "pricing_type" => "per_delivery",
+      "toll_yen" => "600",
+      "deliveries" => [
+        {"東京都港区 芝浦倉庫", "8000", {today, "08:30"}, {today, "09:30"}},
+        {"東京都品川区 大井センター", "7000", {today, "10:00"}, {today, "11:00"}},
+        {"東京都大田区 平和島", "6500", {today, "11:30"}, {today, "12:30"}}
+      ]
+    },
+    %{
+      "title" => "【配車表】昼 横浜方面（午前便と時間が重なる）",
+      "shipper" => "九州運輸",
+      "from" => {today, "12:00"},
+      "to" => {today, "17:00"},
+      "pricing_type" => "course_total",
+      "course_fare_yen" => "28000",
+      "toll_yen" => "1200",
+      "deliveries" => [{"神奈川県横浜市 本牧", nil, {today, "13:00"}, {today, "14:30"}}]
+    },
+    %{
+      "title" => "【配車表】夜便 翌朝まで（日付またぎ）",
+      "shipper" => "北海道物流",
+      "from" => {today, "21:00"},
+      "to" => {tomorrow, "05:00"},
+      "pricing_type" => "course_total",
+      "course_fare_yen" => "45000",
+      "toll_yen" => "3200",
+      "deliveries" => [{"千葉県船橋市 物流センター", nil, {today, "22:00"}, {tomorrow, "02:00"}}]
+    }
+  ]
+
+  at = fn {date, time} -> "#{date}T#{time}" end
+
+  for attrs <- board_seeds do
+    if Dispatches.list_dispatches(admin_scope, %{"q" => attrs["title"]}).total_entries == 0 do
+      deliveries =
+        attrs["deliveries"]
+        |> Enum.with_index()
+        |> Map.new(fn {{destination, fare, loading, unloading}, index} ->
+          {to_string(index),
+           %{
+             "destination" => destination,
+             "fare_yen" => fare,
+             "loading_at" => at.(loading),
+             "unloading_at" => at.(unloading)
+           }}
+        end)
+
+      {:ok, dispatch} =
+        Dispatches.create_dispatch(admin_scope, %{
+          "title" => attrs["title"],
+          "description" => "配車表の確認用シードデータです",
+          "shipper_id" => shippers[attrs["shipper"]].id,
+          "vehicle_id" => tky_vehicle.id,
+          "driver_id" => tky_driver.id,
+          "started_at" => at.(attrs["from"]),
+          "ended_at" => at.(attrs["to"]),
+          "pricing_type" => attrs["pricing_type"],
+          "course_fare_yen" => attrs["course_fare_yen"],
+          "toll_yen" => attrs["toll_yen"],
+          "deliveries" => deliveries
+        })
+
+      IO.puts("created dispatch: #{dispatch.title}")
+    else
+      IO.puts("skipped dispatch: #{attrs["title"]}")
+    end
   end
 end

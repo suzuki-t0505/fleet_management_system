@@ -245,6 +245,36 @@ components:
     rounded: "{rounded.xl}"
     padding: "{spacing.sm} {spacing.md}"
     typography: "{typography.body-sm}"
+  timeline-board:
+    description: "Dispatch board (配車表). One-day horizontal time axis (00:00-24:00) with one row per vehicle or driver. Server-rendered HTML/CSS; no chart library."
+    backgroundColor: "{colors.surface}"
+    borderColor: "{colors.hairline}"
+    rounded: "{rounded.lg}"
+    rowLabelWidth: 160px
+    minWidth: 960px
+    headerBackground: "{colors.canvas-soft}"
+    headerTypography: "{typography.eyebrow}"
+    gridLineColor: "{colors.hairline}"
+    laneHeight: 44px
+    rowPadding: "{spacing.xxs} 0"
+    rowBorder: "{colors.hairline}"
+  timeline-bar:
+    description: "One dispatch on the board. Position and width come from start/end time. Fill is chosen per shipper from the timeline palette; text is on-primary."
+    textColor: "{colors.on-primary}"
+    typography: "{typography.caption}"
+    rounded: "{rounded.md}"
+    height: 36px
+    padding: "0 {spacing.xs}"
+    overlapBorderColor: "{colors.accent-orange}"
+    overlapBorderWidth: 2px
+  timeline-marker:
+    description: "Loading / unloading tick drawn over a bar. Loading is an upward triangle, unloading a downward triangle, in on-primary."
+    color: "{colors.on-primary}"
+    size: 10px
+  timeline-now:
+    description: "Current-time vertical line, shown only when the displayed date is today (JST)."
+    color: "{colors.accent-pink}"
+    width: 2px
 
 ---
 
@@ -477,6 +507,28 @@ Product screenshots are framed in rounded `{rounded.lg}` / `{rounded.xl}` wells,
 **`ex-toast`** — Toast notification surface — feature-card shape + medium shadow.
 - Properties: `backgroundColor`, `rounded`, `padding`, `typography`
 
+
+### Timeline (配車表)
+
+> アプリの1日配車表（`dispatch_live` の `board`）で使うタイムライン。Notion のマーケティングサイトには無い部品のため、既存トークンだけで定義する。
+
+**`timeline-board`** — 配車表の枠
+- `{colors.surface}` 面に `{colors.hairline}` の1px枠、`{rounded.lg}`。左に行名の列（160px、横スクロール時も固定）、右に0〜24時の時間軸。
+- ヘッダー行は `{colors.canvas-soft}` 背景・`{typography.eyebrow}`。1時間ごとの縦の罫線は `{colors.hairline}`、時刻ラベルは2時間おき。
+- 行は `{colors.hairline}` の下罫線で区切る。行の高さは「レーン数 × 44px」（バー36px + 上下の余白）。配車の無い行も同じ高さで残し、空きを見せる。
+- 画面幅が狭いときは最小幅 960px を保ち、枠の中だけ横スクロールする（ページ全体は横スクロールさせない）。
+
+**`timeline-bar`** — 配車1件のバー
+- 位置と幅は開始・終了時刻の割合（%）で決める。高さ36px、`{rounded.md}`、文字は `{colors.on-primary}` の `{typography.caption}`、1行で省略表示。
+- 色は荷主ごとに次の6色を順に使う（いずれも白文字で読める濃さ）: `{colors.primary}` / `{colors.accent-teal}` / `{colors.accent-green}` / `{colors.accent-purple-deep}` / `{colors.accent-brown}` / `{colors.secondary}`。同日に6荷主を超えたら先頭へ戻る。凡例を表の下に出す。
+- 同じ行で時間が重なるバーは上下のレーンにずらし、`{colors.accent-orange}` の2px枠で強調する。
+- その日の範囲を超えて続く側は端を角（`{rounded.xs}`）にし、「←」「→」を付ける。
+
+**`timeline-marker`** — 荷積み・荷降ろしの印
+- バー内に重ねる小さな三角（10px、`{colors.on-primary}`）。荷積みは▲、荷降ろしは▼。ホバー（`title`）で配送先と時刻を出す。
+
+**`timeline-now`** — 現在時刻の線
+- 表示日が今日（JST）のときだけ、`{colors.accent-pink}` の2px縦線を引く。
 
 ## Do's and Don'ts
 

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>要求内容 - 配送先の荷積み・荷降ろし時刻と配車表</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:900px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  .pill { display:inline-block; border-radius:9999px; padding:4px 10px; font-size:12px; font-weight:600; color:#fff; }
+  .p0 { background:var(--accent-orange); } .p1 { background:var(--primary); }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20261004-dispatch-board</div>
+<h1>要求内容：荷積み・荷降ろし時刻と配車表</h1>
+<p style="color:var(--ink-muted)">
+  対象機能: <strong>F-10 配車管理</strong>の拡張（<a href="../20261004-dispatch/requirements.html" style="color:var(--primary)">20261004-dispatch</a> の続き）。
+  既存の配車・荷主の画面は<strong>削除・置き換えをせず</strong>、そのまま残す。
+</p>
+
+<h2>1. 背景</h2>
+<div class="card">
+  <p>配車は配送先ごとに料金を持てるようになったが、<strong>配送先に何時に荷積みし、何時に荷降ろしするか</strong>を残す場所が無い。</p>
+  <p>また、配車は一覧（表）でしか見られず、<strong>その日にどの車両・ドライバーがいつ動くか、空いているか、重なっていないか</strong>が一目で分からない。</p>
+</div>
+
+<h2>2. 目的</h2>
+<ul>
+  <li>配送先ごとに荷積み時刻・荷降ろし時刻を登録・閲覧できるようにする</li>
+  <li>1日分の配車を、車両ごと（またはドライバーごと）の時間軸で図として見られる配車表を用意する</li>
+  <li>配車表から、重なり（ダブルブッキング）と空き時間をひと目で確認し、配車の詳細に移動できるようにする</li>
+</ul>
+
+<h2>3. 対象範囲</h2>
+<table>
+  <thead><tr><th style="width:48px">#</th><th style="width:100px">優先度</th><th>要求</th></tr></thead>
+  <tbody>
+    <tr><td>R-1</td><td><span class="pill p1">P1</span></td>
+      <td><strong>荷積み時刻・荷降ろし時刻</strong>。配送明細（配送先）ごとに、荷積み日時・荷降ろし日時を<strong>任意</strong>で入力できる。料金方式（コース一括/配送ごと）に関わらず入力できる</td></tr>
+    <tr><td>R-2</td><td><span class="pill p1">P1</span></td>
+      <td><strong>時刻の検証</strong>。荷降ろしは荷積みより後。両方とも配車の配送開始〜終了の範囲内であること。範囲外は保存不可</td></tr>
+    <tr><td>R-3</td><td><span class="pill p1">P1</span></td>
+      <td><strong>表示への反映</strong>。配車詳細（運転者向けを含む）の配送先に荷積み・荷降ろし時刻を表示し、配車一覧のCSVにも出力する。時刻は日報と同じくJST入力・表示</td></tr>
+    <tr><td>R-4</td><td><span class="pill p1">P1</span></td>
+      <td><strong>配車表画面</strong>（新規）。日付を指定すると、その日の配車を時間軸（横）× 車両（縦）のバーで表示する。バーの長さは配送開始〜終了</td></tr>
+    <tr><td>R-5</td><td><span class="pill p1">P1</span></td>
+      <td><strong>行の切替</strong>。縦軸を「車両」と「ドライバー」で切り替えられる。管理者は拠点で絞り込める</td></tr>
+    <tr><td>R-6</td><td><span class="pill p1">P1</span></td>
+      <td><strong>バーの内容</strong>。タイトル・荷主・時間帯を表示し、荷積み・荷降ろしの時刻を印で重ねる。荷主ごとに色分けする。クリックで配車詳細へ遷移する</td></tr>
+    <tr><td>R-7</td><td><span class="pill p1">P1</span></td>
+      <td><strong>重なりの強調</strong>。同じ行（車両/ドライバー）で時間が重なる配車は、バーを上下にずらして表示し、警告の色で強調する</td></tr>
+    <tr><td>R-8</td><td><span class="pill p1">P1</span></td>
+      <td><strong>日付をまたぐ配車</strong>。前日から続く/翌日へ続く配車は、その日の範囲で切って表示し、続きがあることが分かる</td></tr>
+    <tr><td>R-9</td><td><span class="pill p1">P1</span></td>
+      <td><strong>操作</strong>。前日/翌日/今日への移動と日付指定ができ、状態はURLで再現できる。配車表から新規登録に進める</td></tr>
+    <tr><td>R-10</td><td><span class="pill p1">P1</span></td>
+      <td><strong>権限</strong>。配車表は運行管理者以上（自拠点のみ、管理者は全拠点）。運転者は自分の配車だけが入った配車表を閲覧できる。サイドナビにも追加する</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 対象外（今回やらないこと）</h2>
+<table>
+  <thead><tr><th style="width:260px">項目</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr><td>ドラッグ＆ドロップでの配車の移動・時間変更</td><td>編集は既存のフォームで行う。配車表は閲覧専用とする</td></tr>
+    <tr><td>週・月単位の表示</td><td>「その日の配車」が要求。1日表示のみ</td></tr>
+    <tr><td>荷積み・荷降ろしの実績時刻（予定との区別）、場所の詳細</td><td>要求に無い。予定/実績を分ける場合は別途設計する</td></tr>
+    <tr><td>荷積み・荷降ろし時刻の必須化、荷積み場所の入力</td><td>任意入力とし、既存データを壊さない</td></tr>
+    <tr><td>既存の配車一覧・荷主・集計の画面の変更や削除</td><td>削除しない。配車一覧から配車表への導線（リンク）のみ追加する</td></tr>
+  </tbody>
+</table>
+
+<h2>5. 受け入れ条件</h2>
+<div class="card">
+<ul>
+  <li>配送先ごとに荷積み・荷降ろし時刻を入力でき（空欄も可）、保存後の詳細に表示される</li>
+  <li>荷降ろしが荷積み以前、または時刻が配車の配送時間の範囲外だと保存できない</li>
+  <li>配車一覧のCSVに荷積み・荷降ろし時刻が出る（配送先と同じ順の連結）</li>
+  <li>配車表で、指定日の配車が車両ごとの行にバーとして並び、バーをクリックすると配車詳細に移る</li>
+  <li>縦軸をドライバーに切り替えられる。前日/翌日/今日/日付指定が動き、URLで同じ画面が再現できる</li>
+  <li>同じ車両で時間が重なる配車は、重ならない位置にずらされ、警告色で表示される</li>
+  <li>日付をまたぐ配車は、その日の範囲で切られて表示される</li>
+  <li>運行管理者の配車表に他拠点の配車が出ない。運転者は自分の配車だけが出る</li>
+  <li>既存の配車・荷主・集計の画面が引き続き動く。<code>make check</code> がすべて通る</li>
+</ul>
+</div>
+
+<div class="note">
+  <strong>前提</strong>：荷積み・荷降ろしは<strong>日時</strong>（日付を持つ）で保持する。配車表の時間軸は 0:00〜24:00 の固定とし、
+  グラフ描画はJSライブラリを使わずサーバー描画のHTML/CSSで行う。<code>docs/DESIGN-notion.md</code> に配車表（タイムライン）の定義が無いため、
+  実装前に追記する。
+</div>
+</main>
+</body>
+</html>

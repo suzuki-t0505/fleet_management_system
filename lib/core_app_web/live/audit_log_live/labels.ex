@@ -19,6 +19,8 @@ defmodule CoreAppWeb.AuditLogLive.Labels do
     {"運転者", "driver"},
     {"運行日報", "operation_report"},
     {"点検整備", "maintenance"},
+    {"荷主", "shipper"},
+    {"配車", "dispatch"},
     {"事故・ヒヤリ", "incident"},
     {"ユーザー", "user"}
   ]

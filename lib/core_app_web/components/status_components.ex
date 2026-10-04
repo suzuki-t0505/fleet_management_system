@@ -31,11 +31,17 @@ defmodule CoreAppWeb.StatusComponents do
     closed: {"完了", "bg-accent-green"}
   }
 
+  @shipper_statuses %{
+    active: {"有効", "bg-accent-green"},
+    inactive: {"無効", "bg-ink-secondary"}
+  }
+
   @labels %{
     vehicle: @vehicle_statuses,
     operation_report: @report_statuses,
     user: @user_statuses,
-    incident: @incident_statuses
+    incident: @incident_statuses,
+    shipper: @shipper_statuses
   }
 
   @doc """
@@ -47,7 +53,7 @@ defmodule CoreAppWeb.StatusComponents do
 
   attr :type, :atom,
     default: :vehicle,
-    values: [:vehicle, :operation_report, :user, :incident]
+    values: [:vehicle, :operation_report, :user, :incident, :shipper]
 
   def status_badge(assigns) do
     {label, color} = @labels |> Map.fetch!(assigns.type) |> Map.fetch!(assigns.status)

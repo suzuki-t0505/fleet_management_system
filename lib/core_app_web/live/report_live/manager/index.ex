@@ -6,6 +6,7 @@ defmodule CoreAppWeb.ReportLive.Manager.Index do
   alias CoreApp.Offices
   alias CoreApp.Reports
 
+  alias CoreAppWeb.DispatchLive.Labels, as: DispatchLabels
   alias CoreAppWeb.ExportColumns
   alias CoreAppWeb.IncidentLive.Labels, as: IncidentLabels
   alias CoreAppWeb.MaintenanceLive.Labels, as: MaintenanceLabels
@@ -16,12 +17,19 @@ defmodule CoreAppWeb.ReportLive.Manager.Index do
     {"走行距離集計", "distance"},
     {"燃費集計", "fuel"},
     {"整備費集計", "maintenance_cost"},
-    {"事故・ヒヤリ集計", "incident"}
+    {"事故・ヒヤリ集計", "incident"},
+    {"配車売上集計", "dispatch_revenue"}
   ]
 
   @axes %{
     "distance" => [{"車両", "vehicle"}, {"運転者", "driver"}, {"拠点", "office"}],
-    "maintenance_cost" => [{"車両", "vehicle"}, {"拠点", "office"}]
+    "maintenance_cost" => [{"車両", "vehicle"}, {"拠点", "office"}],
+    "dispatch_revenue" => [
+      {"荷主", "shipper"},
+      {"車両", "vehicle"},
+      {"運転者", "driver"},
+      {"拠点", "office"}
+    ]
   }
 
   @impl true
@@ -59,6 +67,9 @@ defmodule CoreAppWeb.ReportLive.Manager.Index do
 
   defp load(scope, :incident, filters), do: Reports.incident_report(scope, filters)
 
+  defp load(scope, :dispatch_revenue, filters),
+    do: Reports.dispatch_revenue_report(scope, filters)
+
   defp report_of(filters) do
     Enum.find(Reports.report_types(), :distance, &(to_string(&1) == filters["report"]))
   end
@@ -78,7 +89,7 @@ defmodule CoreAppWeb.ReportLive.Manager.Index do
 
       <div class="space-y-6">
         <p class="text-body-sm text-ink-muted">
-          集計対象は<strong>承認済みの日報</strong>のみです。月は運行日・実施日・発生日（JST）で区切ります。
+          走行距離・燃費は<strong>承認済みの日報</strong>のみを集計します。配車売上は承認の概念が無いため<strong>すべての配車</strong>を集計し、運賃と高速料金の合計を売上とします。月は運行日・実施日・発生日・配送開始日（JST）で区切ります。
         </p>
 
         <.search_bar params={@filters} placeholder="">
@@ -96,7 +107,7 @@ defmodule CoreAppWeb.ReportLive.Manager.Index do
               label="集計軸"
               value={@filters["axis"]}
               options={@axis_options}
-              prompt="車両"
+              prompt={axis_prompt(@report)}
             />
             <.filter_select
               :if={Scope.admin?(@current_scope)}
@@ -172,12 +183,28 @@ defmodule CoreAppWeb.ReportLive.Manager.Index do
             <:col :let={row} label="完了率">{percentage(row.completion_rate)}</:col>
           </.data_table>
 
+          <.data_table
+            :if={@report == :dispatch_revenue}
+            id="dispatch-revenue-report"
+            rows={@page.entries}
+          >
+            <:col :let={row} label="月">{ExportColumns.month(row.month)}</:col>
+            <:col :let={row} label="対象">{row.key_name}</:col>
+            <:col :let={row} label="配車件数">{row.dispatch_count} 件</:col>
+            <:col :let={row} label="運賃">{DispatchLabels.yen(row.fare_yen)}</:col>
+            <:col :let={row} label="高速料金">{DispatchLabels.yen(row.toll_yen)}</:col>
+            <:col :let={row} label="売上合計">{DispatchLabels.yen(row.total_yen)}</:col>
+          </.data_table>
+
           <.pagination page={@page} path={&~p"/management/reports?#{Map.put(@filters, "page", &1)}"} />
         </div>
       </div>
     </Layouts.app>
     """
   end
+
+  defp axis_prompt(:dispatch_revenue), do: "荷主"
+  defp axis_prompt(_report), do: "車両"
 
   defp decimal(nil, _unit), do: "-"
   defp decimal(value, unit), do: "#{Decimal.to_string(Decimal.new(value), :normal)} #{unit}"

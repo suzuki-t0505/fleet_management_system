@@ -31,6 +31,12 @@ defmodule CoreAppWeb.Router do
         live "/:id", Show, :show
       end
 
+      scope "/dispatches", DispatchLive.Member do
+        live "/", Index, :index
+        live "/board", Board, :index
+        live "/:id", Show, :show
+      end
+
       scope "/operation_reports", OperationReportLive.Member do
         live "/", Index, :index
         live "/new", Form, :new
@@ -85,6 +91,21 @@ defmodule CoreAppWeb.Router do
       end
 
       scope "/maintenances", MaintenanceLive.Manager do
+        live "/", Index, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+        live "/:id", Show, :show
+      end
+
+      scope "/dispatches", DispatchLive.Manager do
+        live "/", Index, :index
+        live "/board", Board, :index
+        live "/new", Form, :new
+        live "/:id/edit", Form, :edit
+        live "/:id", Show, :show
+      end
+
+      scope "/shippers", ShipperLive.Manager do
         live "/", Index, :index
         live "/new", Form, :new
         live "/:id/edit", Form, :edit

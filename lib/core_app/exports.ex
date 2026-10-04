@@ -14,6 +14,8 @@ defmodule CoreApp.Exports do
   alias CoreApp.Repo
 
   alias CoreApp.Accounts.Scope
+  alias CoreApp.Dispatches.Delivery
+  alias CoreApp.Dispatches.Dispatch
   alias CoreApp.Drivers.Driver
   alias CoreApp.Incidents.Incident
   alias CoreApp.Maintenances.Maintenance
@@ -23,7 +25,7 @@ defmodule CoreApp.Exports do
   # 9.2: 出力上限。超えた場合は出力せず、絞り込みを促す
   @default_max_rows 50_000
 
-  @resources ~w(vehicles drivers operation_reports maintenances incidents)a
+  @resources ~w(vehicles drivers operation_reports maintenances incidents dispatches)a
 
   @doc """
   出力できるリソースの一覧を返します。
@@ -183,7 +185,7 @@ defmodule CoreApp.Exports do
     |> join(:left, [i], d in assoc(i, :driver), as: :driver)
     |> scoped(scope)
     |> filter_office(scope, params["office_id"])
-    |> filter_datetime_period(params["from"], params["to"])
+    |> filter_datetime_period(:occurred_at, params["from"], params["to"])
     |> filter_eq(:category, params["category"])
     |> filter_eq(:status, params["status"])
     |> filter_eq(:vehicle_id, params["vehicle_id"])
@@ -210,6 +212,69 @@ defmodule CoreApp.Exports do
       countermeasure_due_on: i.countermeasure_due_on,
       countermeasure_owner: i.countermeasure_owner
     })
+  end
+
+  defp query(scope, :dispatches, params) do
+    deliveries =
+      from(del in Delivery,
+        group_by: del.dispatch_id,
+        select: %{
+          dispatch_id: del.dispatch_id,
+          destinations: fragment("string_agg(?, '、' ORDER BY ?)", del.destination, del.position),
+          loading_times:
+            fragment(
+              "string_agg(COALESCE(to_char(? + interval '9 hours', 'MM/DD HH24:MI'), '-'), '、' ORDER BY ?)",
+              del.loading_at,
+              del.position
+            ),
+          unloading_times:
+            fragment(
+              "string_agg(COALESCE(to_char(? + interval '9 hours', 'MM/DD HH24:MI'), '-'), '、' ORDER BY ?)",
+              del.unloading_at,
+              del.position
+            ),
+          fare_total_yen: sum(del.fare_yen)
+        }
+      )
+
+    Dispatch
+    |> from(as: :dispatch)
+    |> join(:inner, [dispatch: d], o in assoc(d, :office), as: :office)
+    |> join(:inner, [dispatch: d], s in assoc(d, :shipper), as: :shipper)
+    |> join(:inner, [dispatch: d], v in assoc(d, :vehicle), as: :vehicle)
+    |> join(:inner, [dispatch: d], dr in assoc(d, :driver), as: :driver)
+    |> join(:left, [dispatch: d], dl in subquery(deliveries),
+      on: dl.dispatch_id == d.id,
+      as: :deliveries
+    )
+    |> scoped(scope)
+    |> filter_office(scope, params["office_id"])
+    |> filter_datetime_period(:started_at, params["from"], params["to"])
+    |> filter_eq(:shipper_id, params["shipper_id"])
+    |> filter_eq(:vehicle_id, params["vehicle_id"])
+    |> filter_eq(:driver_id, params["driver_id"])
+    |> search_dispatches(params["q"])
+    |> order_by([dispatch: d], desc: d.started_at, desc: d.id)
+    |> select(
+      [dispatch: d, office: o, shipper: s, vehicle: v, driver: dr, deliveries: dl],
+      %{
+        started_at: d.started_at,
+        ended_at: d.ended_at,
+        title: d.title,
+        description: d.description,
+        office_name: o.name,
+        shipper_name: s.name,
+        plate_number: v.plate_number,
+        driver_name: dr.name,
+        pricing_type: d.pricing_type,
+        course_fare_yen: d.course_fare_yen,
+        deliveries_fare_total_yen: dl.fare_total_yen,
+        toll_yen: d.toll_yen,
+        destinations: dl.destinations,
+        loading_times: dl.loading_times,
+        unloading_times: dl.unloading_times
+      }
+    )
   end
 
   # 出力は拠点単位で完結させる。運行管理者のCSVには他拠点の行を入れない
@@ -273,19 +338,19 @@ defmodule CoreApp.Exports do
     where(query, [x], field(x, ^field) <= ^value)
   end
 
-  # 発生日時はUTC保存のため、JSTの日付の範囲に直して突き合わせる
-  defp filter_datetime_period(query, from, to) do
+  # 日時はUTC保存のため、JSTの日付の範囲に直して突き合わせる
+  defp filter_datetime_period(query, field, from, to) do
     query
     |> then(fn q ->
       case parse_date(from) do
         nil -> q
-        date -> where(q, [i], i.occurred_at >= ^beginning_of_day(date))
+        date -> where(q, [x], field(x, ^field) >= ^beginning_of_day(date))
       end
     end)
     |> then(fn q ->
       case parse_date(to) do
         nil -> q
-        date -> where(q, [i], i.occurred_at <= ^end_of_day(date))
+        date -> where(q, [x], field(x, ^field) <= ^end_of_day(date))
       end
     end)
   end
@@ -312,6 +377,19 @@ defmodule CoreApp.Exports do
     pattern = "%#{String.trim(keyword)}%"
 
     where(query, [m, vehicle: v], ilike(v.plate_number, ^pattern) or ilike(m.vendor, ^pattern))
+  end
+
+  defp search_dispatches(query, keyword) when keyword in [nil, ""], do: query
+
+  defp search_dispatches(query, keyword) do
+    pattern = "%#{String.trim(keyword)}%"
+
+    where(
+      query,
+      [shipper: s, deliveries: dl],
+      ilike(as(:dispatch).title, ^pattern) or ilike(s.name, ^pattern) or
+        ilike(dl.destinations, ^pattern)
+    )
   end
 
   defp parse_date(value) when is_binary(value) and value != "" do
