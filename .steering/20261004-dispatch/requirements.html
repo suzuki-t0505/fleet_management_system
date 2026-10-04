@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>要求内容 - 配車管理</title>
+<style>
+  :root {
+    --canvas-soft:#f6f5f4; --surface:#fff; --ink:#000; --ink-secondary:#31302e;
+    --ink-muted:#615d59; --ink-faint:#a39e98; --hairline:#e6e6e6;
+    --primary:#0075de; --accent-orange:#dd5b00; --accent-green:#1aae39;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:32px 16px; background:var(--canvas-soft); color:var(--ink);
+         font-family:Inter,"Noto Sans JP",system-ui,sans-serif; line-height:1.5; }
+  main { max-width:900px; margin:0 auto; }
+  .eyebrow { font-size:12px; font-weight:600; letter-spacing:.125px; color:var(--ink-muted); text-transform:uppercase; }
+  h1 { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px; }
+  h2 { font-size:26px; font-weight:700; letter-spacing:-.625px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--hairline); }
+  p, li { font-size:15px; color:var(--ink-secondary); }
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:24px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:12px; overflow:hidden; margin:12px 0 24px; }
+  th { background:var(--canvas-soft); font-size:12px; font-weight:600; letter-spacing:.125px; text-align:left; padding:12px 16px; color:var(--ink-muted); text-transform:uppercase; }
+  td { font-size:15px; padding:12px 16px; border-top:1px solid var(--hairline); color:var(--ink-secondary); vertical-align:top; }
+  code { background:var(--canvas-soft); border-radius:4px; padding:2px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink); }
+  .pill { display:inline-block; border-radius:9999px; padding:4px 10px; font-size:12px; font-weight:600; color:#fff; }
+  .p0 { background:var(--accent-orange); } .p1 { background:var(--primary); }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  .note { border-left:3px solid var(--primary); background:var(--surface); padding:12px 16px; border-radius:0 8px 8px 0; margin:12px 0; font-size:15px; }
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">.steering / 20261004-dispatch</div>
+<h1>要求内容：配車管理</h1>
+<p style="color:var(--ink-muted)">
+  対象機能: <strong>F-10 車両の予約・配車管理</strong>（<a href="../../docs/product-requirements.md" style="color:var(--primary)">product-requirements.md</a> F-10 /
+  <a href="../../docs/glossary.md" style="color:var(--primary)">glossary.md</a> 12）。Issue #7
+</p>
+
+<h2>1. 背景</h2>
+<div class="card">
+  <p>運行日報（F-3）は「走った結果」を記録するもので、<strong>「誰がどの車両でどの荷主のどの配送を、いくらで請け負うか」を登録する場所が無い</strong>。
+  配送の予定・実績と受取金額が紙や表計算に分散している。</p>
+  <p>受取金額は <strong>コース一括（コースでトータルいくら）</strong> と <strong>配送ごと（1配送いくら）</strong> の2方式があり、
+  1件の配車ごとにどちらかを選べる必要がある。</p>
+</div>
+
+<h2>2. 目的</h2>
+<ul>
+  <li>配送の開始・終了時間、タイトル、説明、荷主、配送先、配送料金、高速料金、車両、ドライバーを登録・閲覧できるようにする</li>
+  <li>コース一括・配送ごとの2方式の受取金額を、1つの画面・1つの合計で扱えるようにする</li>
+  <li>同じ車両・ドライバーの時間重複に登録時に気付けるようにする</li>
+  <li>荷主・車両・ドライバー別の売上を集計し、CSVで出力できるようにする</li>
+</ul>
+
+<h2>3. 対象範囲</h2>
+<table>
+  <thead><tr><th style="width:48px">#</th><th style="width:100px">優先度</th><th>要求</th></tr></thead>
+  <tbody>
+    <tr><td>R-1</td><td><span class="pill p1">P1</span></td>
+      <td><strong>荷主マスタ</strong>。拠点ごとに荷主（名称・コード・備考・有効/無効）を登録・編集・閲覧できる。物理削除はせず無効化で運用する</td></tr>
+    <tr><td>R-2</td><td><span class="pill p1">P1</span></td>
+      <td><strong>配車の登録・編集</strong>。配送開始時間・配送終了時間・タイトル・説明・荷主・車両・ドライバー・高速料金を入力できる。終了は開始より後</td></tr>
+    <tr><td>R-3</td><td><span class="pill p1">P1</span></td>
+      <td><strong>料金方式の選択</strong>。<code>コース一括</code>はコース料金（総額）を1つ入力、<code>配送ごと</code>は配送明細（配送先 + 配送料金）を複数行入力する</td></tr>
+    <tr><td>R-4</td><td><span class="pill p1">P1</span></td>
+      <td><strong>配送先</strong>は自由入力。コース一括でも配送先を複数登録できる（料金は持たない）</td></tr>
+    <tr><td>R-5</td><td><span class="pill p1">P1</span></td>
+      <td><strong>受取金額の合計</strong>。コース一括 = コース料金 + 高速料金、配送ごと = 配送料金の合計 + 高速料金。一覧・詳細に表示する</td></tr>
+    <tr><td>R-6</td><td><span class="pill p1">P1</span></td>
+      <td><strong>配車一覧</strong>。期間・荷主・車両・ドライバー・キーワードで絞り込み、ページングできる</td></tr>
+    <tr><td>R-7</td><td><span class="pill p1">P1</span></td>
+      <td><strong>配車詳細</strong>。配送明細・料金内訳・合計を表示する</td></tr>
+    <tr><td>R-8</td><td><span class="pill p1">P1</span></td>
+      <td><strong>時間重複の警告</strong>。同一車両・同一ドライバーの時間が他の配車と重なる場合、保存はできるが警告を表示する</td></tr>
+    <tr><td>R-9</td><td><span class="pill p1">P1</span></td>
+      <td><strong>権限</strong>。管理者は全拠点、運行管理者は自拠点の登録・編集・閲覧。一般利用者（ドライバー）は自分に割り当てられた配車の閲覧のみ</td></tr>
+    <tr><td>R-10</td><td><span class="pill p1">P1</span></td>
+      <td><strong>監査ログ</strong>。荷主・配車の作成・更新を同一トランザクションで記録する</td></tr>
+    <tr><td>R-11</td><td><span class="pill p1">P1</span></td>
+      <td><strong>売上集計レポート</strong>。月 × 荷主 / 車両 / ドライバーの売上（運賃 + 高速料金）。集計レポートのCSV出力に対応</td></tr>
+    <tr><td>R-12</td><td><span class="pill p1">P1</span></td>
+      <td><strong>配車一覧のCSV出力</strong>。画面の絞り込み条件を反映、既存のCSV形式（UTF-8 BOM・CRLF・日本語ヘッダー・上限50,000件）に従う</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 対象外（今回やらないこと）</h2>
+<table>
+  <thead><tr><th style="width:260px">項目</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr><td>車両の予約申請・承認フロー</td><td>F-10 の後半。今回は管理者が直接配車を登録する</td></tr>
+    <tr><td>カレンダー・ガントチャート表示</td><td>DESIGN-notion.md に定義が無く、先に定義が必要。一覧で代替する</td></tr>
+    <tr><td>配送先のマスタ化</td><td>自由入力で開始する。必要になった段階でマスタ化する</td></tr>
+    <tr><td>配車と運行日報の紐付け</td><td>運用が固まってから別タスクで検討する</td></tr>
+    <tr><td>配車ステータス（予定・完了など）</td><td>今回は要求に無い。時刻のみで予定/実績を表す</td></tr>
+    <tr><td>請求書・配送伝票の発行、荷主向け公開</td><td>PRDで対象外</td></tr>
+    <tr><td>ドライバーによる配車の編集</td><td>閲覧のみとする</td></tr>
+  </tbody>
+</table>
+
+<h2>5. 受け入れ条件</h2>
+<div class="card">
+<ul>
+  <li>荷主を登録・編集・無効化でき、無効な荷主は配車の選択肢に出ない</li>
+  <li>コース一括の配車は、コース料金と高速料金の合計が一覧・詳細に出る</li>
+  <li>配送ごとの配車は、複数の配送明細の料金合計に高速料金を足した額が出る</li>
+  <li>料金方式に応じた必須入力が検証される（コース一括=コース料金、配送ごと=各明細の配送料金）</li>
+  <li>終了時間が開始時間以前だとエラーになる</li>
+  <li>同じ車両またはドライバーの時間重複で警告が出て、保存は可能</li>
+  <li>運行管理者は他拠点の荷主・配車を参照・指定できない（存在しない場合と同じ応答）</li>
+  <li>ドライバーは自分の配車だけが一覧に出て、編集・作成の URL は拒否される</li>
+  <li>売上集計が月別・軸別に出て、CSVに出力できる。配車一覧のCSVに絞り込みが反映される</li>
+  <li><code>make check</code>（compile / format / credo / test）がすべて通る</li>
+</ul>
+</div>
+
+<div class="note">
+  <strong>前提</strong>：<strong>高速料金は受取額に含める</strong>（合計 = 運賃 + 高速料金）。実費コストとして扱う場合は R-5・R-11 を変更する。
+  時刻はUTC保存・JST表示、金額は整数円。F-1〜F-7 は実装済み。
+</div>
+</main>
+</body>
+</html>

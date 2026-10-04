@@ -21,6 +21,7 @@
 | F-5 | 点検・整備記録と期限アラート | 運行管理者 / 管理者 | P0 |
 | F-6 | 事故・ヒヤリ記録と改善報告 | 全ロール | P0 |
 | F-7 | ダッシュボードとデータ出力 | 全ロール | P1 |
+| F-10 | 配車管理（荷主・配車の登録/閲覧、受取金額、売上集計） | 運行管理者 / 管理者（運転者は閲覧） | P1 |
 
 ---
 
@@ -52,6 +53,9 @@
 | 日報の承認・差戻し | ○ | △ 自拠点 | × |
 | 日報の参照 | ○ | △ 自拠点 | △ 自分の日報 |
 | 点検整備記録の登録・編集 | ○ | △ 自拠点 | × |
+| 荷主の登録・編集・参照 | ○ | △ 自拠点 | × |
+| 配車の登録・編集 | ○ | △ 自拠点 | × |
+| 配車の参照（配車表を含む） | ○ | △ 自拠点 | △ 自分に割り当てられた配車（受取金額は非表示） |
 | 事故・ヒヤリの報告 | ○ | ○ | ○ |
 | 事故・ヒヤリの原因分析・改善策の登録 | ○ | △ 自拠点 | × |
 | 改善報告の承認 | ○ | △ 自拠点 | × |
@@ -107,6 +111,9 @@ URL は [coding-rules.md](coding-rules.md) 8.4 に従い、一般利用者向け
 | 事故・ヒヤリ 詳細 | `/incidents/:id` | `:show` |
 | 車両 参照一覧（自拠点） | `/vehicles` | `:index` |
 | 車両 参照詳細 | `/vehicles/:id` | `:show` |
+| 自分の配車一覧 | `/dispatches` | `:index` |
+| 配車 詳細（受取金額は非表示） | `/dispatches/:id` | `:show` |
+| 配車表（自分の配車だけ。`?date=`） | `/dispatches/board` | `:index` |
 
 ### 3.3 運行管理者・管理者向け
 
@@ -123,6 +130,13 @@ URL は [coding-rules.md](coding-rules.md) 8.4 に従い、一般利用者向け
 | 点検整備記録 一覧 | `/management/maintenances` | admin / manager |
 | 点検整備記録 登録・編集 | `/management/maintenances/new`, `/management/maintenances/:id/edit` | admin / manager |
 | 点検整備記録 詳細 | `/management/maintenances/:id` | admin / manager |
+| 配車一覧 | `/management/dispatches` | admin / manager |
+| 配車表（1日のタイムライン。`?date=` `?axis=vehicle|driver` `?office_id=`） | `/management/dispatches/board` | admin / manager |
+| 配車 登録・編集 | `/management/dispatches/new`, `/management/dispatches/:id/edit` | admin / manager |
+| 配車 詳細 | `/management/dispatches/:id` | admin / manager |
+| 荷主一覧 | `/management/shippers` | admin / manager |
+| 荷主 登録・編集 | `/management/shippers/new`, `/management/shippers/:id/edit` | admin / manager |
+| 荷主 詳細 | `/management/shippers/:id` | admin / manager |
 | 期限アラート一覧 | `/management/alerts` | admin / manager |
 | 事故・ヒヤリ 一覧 | `/management/incidents` | admin / manager |
 | 事故・ヒヤリ 詳細・分析・承認 | `/management/incidents/:id` | admin / manager |
@@ -164,6 +178,8 @@ URL は [coding-rules.md](coding-rules.md) 8.4 に従い、一般利用者向け
 | 運転者 | `drivers` | － |
 | 運行日報 | `operation_reports` | `refuelings` |
 | 点検整備 | `maintenances` | － |
+| 荷主 | `shippers` | － |
+| 配車 | `dispatches` | `dispatch_deliveries` |
 | 事故・ヒヤリ | `incidents` | － |
 | 添付ファイル | `attachments` | － |
 | 通知 | `alert_notifications` | － |
@@ -181,6 +197,11 @@ erDiagram
     drivers ||--o{ operation_reports : "運転"
     operation_reports ||--o{ refuelings : "給油"
     vehicles ||--o{ maintenances : "整備"
+    offices ||--o{ shippers : "取引先"
+    shippers ||--o{ dispatches : "荷主"
+    vehicles ||--o{ dispatches : "配車"
+    drivers ||--o{ dispatches : "担当"
+    dispatches ||--o{ dispatch_deliveries : "配送先"
     vehicles ||--o{ incidents : "事故・ヒヤリ"
     drivers ||--o{ incidents : "当事者"
     vehicles ||--o{ attachments : "添付"
@@ -309,6 +330,48 @@ erDiagram
 | description | text | | 作業内容 |
 | next_scheduled_on | date | | 次回実施予定日 |
 | created_by_user_id | ULID | NN, FK | 登録者 |
+
+#### shippers（荷主）
+
+| カラム | 型 | 制約 | 説明 |
+|--------|----|------|------|
+| office_id | ULID | NN, FK | 拠点 |
+| name | string(255) | NN, UQ(office_id, name) | 荷主名（拠点内で一意） |
+| code | string(50) | | 荷主コード |
+| note | text | | 備考 |
+| status | string | NN | `active`(既定) / `inactive`。物理削除はせず無効化で運用する |
+
+複合インデックス: `(office_id, status)`
+
+#### dispatches（配車）
+
+| カラム | 型 | 制約 | 説明 |
+|--------|----|------|------|
+| office_id | ULID | NN, FK | 拠点（**車両の配置拠点**に従う） |
+| shipper_id | ULID | NN, FK, IDX | 荷主 |
+| vehicle_id | ULID | NN, FK | 車両 |
+| driver_id | ULID | NN, FK | ドライバー（運転者） |
+| created_by_user_id | ULID | NN, FK | 登録者 |
+| title | string(255) | NN | 配送タイトル |
+| description | text | | 配送説明 |
+| started_at | utc_datetime | NN | 配送開始日時 |
+| ended_at | utc_datetime | NN | 配送終了日時 |
+| pricing_type | string | NN | `course_total`(コース一括) / `per_delivery`(配送ごと) |
+| course_fare_yen | integer | | コース料金。`course_total` のとき必須、`per_delivery` のときは nil |
+| toll_yen | integer | NN | 高速料金（既定0） |
+
+複合インデックス: `(office_id, started_at)` / `(vehicle_id, started_at)` / `(driver_id, started_at)`
+
+#### dispatch_deliveries（配送明細）
+
+| カラム | 型 | 制約 | 説明 |
+|--------|----|------|------|
+| dispatch_id | ULID | NN, FK | 配車（親の削除で連鎖削除） |
+| position | integer | NN | 表示順（入力順に1から採番） |
+| destination | string(255) | NN | 配送先（自由入力） |
+| fare_yen | integer | | 配送料金。`per_delivery` のとき必須、`course_total` のときは nil |
+| loading_at | utc_datetime | | 荷積み日時（任意） |
+| unloading_at | utc_datetime | | 荷降ろし日時（任意） |
 
 #### incidents（事故・ヒヤリ記録）
 
@@ -499,6 +562,34 @@ stateDiagram-v2
 | V-28-3 | `countermeasure_due_on` に過去日は入力できない | 保存不可 |
 | V-28-4 | 報告内容を編集できるのは、一般利用者は**自分の報告が `reported` の間だけ**。運行管理者以上は自拠点の `closed` 以外 | 編集ボタンを表示せず、Context でも拒否 |
 
+### 6.6 配車（F-10）
+
+| # | ルール | エラー時の挙動 |
+|---|-------|--------------|
+| V-29 | `ended_at` は `started_at` より後 | 保存不可 |
+| V-30 | **受取金額** = 運賃 + `toll_yen`。運賃は `course_total` なら `course_fare_yen`、`per_delivery` なら明細の `fare_yen` の合計。高速料金は受取額に**含める** | 計算は `Dispatches.Dispatch.total_amount_yen/1` に集約し、画面・CSV・集計で同じ規則を使う |
+| V-31 | `course_total` は `course_fare_yen` が必須、`per_delivery` は明細が1件以上で各 `fare_yen` が必須。使わない側の金額は nil に正規化する。金額は0以上の整数円 | 保存不可（正規化は保存時に自動） |
+| V-32 | 同じ車両または同じドライバーの `[started_at, ended_at)` が他の配車と重なる場合は警告。終了と開始がちょうど一致する場合は重なりとみなさない | 警告表示（保存は続行可） |
+| V-33 | 荷主・ドライバーは配車（車両）と**同じ拠点**のものに限る。運行管理者は自拠点の車両しか選べない。無効（`inactive`）な荷主は新たに選べない（既に紐付いている荷主は維持できる） | 保存不可 |
+| V-34 | 配車の拠点は**車両の配置拠点**に従う（登録者の拠点ではない）。一般利用者は自分が `driver_id` の配車だけ参照でき、登録・編集はできない | 他拠点・他人の配車は存在しないものとして扱う（not found） |
+| V-35 | 配送明細の `loading_at`（荷積み）・`unloading_at`（荷降ろし）は任意。片方だけの入力も可。料金方式に関わらず入力できる | － |
+| V-36 | 両方入力された場合、`unloading_at` は `loading_at` より後 | 保存不可 |
+| V-37 | 入力された荷積み・荷降ろしは、配車の `started_at` 以上 `ended_at` 以下（境界を含む）。**値が変わっていなくても検証する**（配車の時間を縮めたとき、既存の時刻が範囲外になるため）。配車の日時が未入力のときは検証しない | 保存不可 |
+
+### 6.7 配車表（F-10）
+
+1日分の配車を、時間軸（0〜24時、JST）× 行（車両またはドライバー）で見るタイムライン。**閲覧専用**で、編集は配車フォームで行う。
+
+| 項目 | 仕様 |
+|------|------|
+| 対象 | 指定日（JST）と時間が重なる配車。前日から続く・翌日へ続く配車を含む。終了が0:00ちょうど・開始が翌0:00ちょうどの配車は含まない |
+| 行 | 車両（既定）またはドライバー。**配車の無い行も表示**して空きが分かるようにする。その日に配車がある行は、廃車・退職済みでも追加する。管理者は拠点で絞り込める。一般利用者は自分の配車がある行だけ |
+| バー | 左位置・幅は開始/終了時刻の割合（%）。その日の範囲で切り、続く側に `←` `→` を付ける。荷主ごとに色分け（6色、同日に6荷主を超えたら繰り返し）し、凡例を出す。クリックで配車詳細へ |
+| 重なり | 同じ行で時間が重なる配車は上下のレーンにずらし、警告色の枠で強調する（V-32と同じく、終了=開始は重ならない） |
+| 印 | 荷積み▲・荷降ろし▼を、その日の範囲内のものだけバー内に重ねる |
+| 操作 | 前日 / 今日 / 翌日、日付指定、行の切替。状態はURLのクエリ（`date` `axis` `office_id`）で再現できる。不正な日付は今日にする |
+| 実装 | 位置・レーン・印の計算は `Dispatches.Board`（純関数）。描画は `DispatchLive.BoardComponents`（JSライブラリを使わないHTML/CSS）。デザインは [DESIGN-notion.md](DESIGN-notion.md) の「Timeline (配車表)」 |
+
 ---
 
 ## 7. 期限アラート処理仕様（F-5）
@@ -568,8 +659,9 @@ stateDiagram-v2
 | 燃費集計 | 月 × 車両 | 走行距離 ÷ 給油量、給油金額合計 |
 | 整備費集計 | 月 × 車両 / 拠点 | 費用合計、件数。**区分ごとの行**として返すため、種別内訳がそのまま読める |
 | 事故・ヒヤリ集計 | 月 × 拠点 × 区分 | 発生件数、改善報告完了率 |
+| 配車売上集計 | 月 × 荷主 / 車両 / ドライバー / 拠点 | 配車件数、運賃、高速料金、売上合計（運賃 + 高速料金）。月は配送開始日時のJSTで切る |
 
-集計対象は `status = approved` の日報のみとする。
+走行距離・燃費・整備費は `status = approved` の日報のみを集計対象とする。配車売上は承認の概念が無いため**すべての配車**を対象とする。
 
 ---
 
@@ -584,7 +676,7 @@ stateDiagram-v2
 
 ### 9.2 CSV出力
 
-- 対象は車両・運転者・運行日報・点検整備記録・事故/ヒヤリ記録の5つの一覧と、集計レポート
+- 対象は車両・運転者・運行日報・点検整備記録・事故/ヒヤリ記録・配車の6つの一覧と、集計レポート（配車は1配車1行。配送先・荷積み時刻・荷降ろし時刻は同じ順に「、」区切りで連結し（時刻はJST、未入力は `-`）、料金方式・コース料金・配送料金合計・高速料金・受取金額合計を別列で出す）
 - 画面上の絞り込み条件をそのまま反映する
 - 文字コードは UTF-8 (BOM付き)、改行は CRLF
 - ヘッダー行は日本語の項目名とする
@@ -605,6 +697,7 @@ stateDiagram-v2
 | ユーザー | 作成・ロール変更・無効化・パスワードリセット発行 |
 | 運行日報 | 承認・差戻し |
 | 事故・ヒヤリ | 承認・全社共有設定の変更 |
+| 荷主・配車 | 作成・更新（配送明細の変更内容は配車の `changes` に含める） |
 
 ### 9.5 日時の入力
 
@@ -659,4 +752,7 @@ stateDiagram-v2
 | 3 | 定時実行の実装方式（Oban / Quantum など） | `architecture.md` で決定 |
 | 4 | OTPアプリ名・モジュール名（現状 `core_app` / `CoreApp` のまま） | `architecture.md` で決定・リネーム |
 | 5 | 運転者コード・拠点コードの採番規則 | 運用側の既存規則を確認 |
-| 6 | 車両1台に対する複数運転者の割当（専属制か都度割当か） | 現設計は日報ごとの都度指定。専属制が必要なら `vehicles.default_driver_id` を追加 |
+| 6 | 配車と運行日報の紐付け（配車から日報を起票する、日報の行き先・荷種を配車から引き継ぐ） | 今回は紐付けない。運用が固まってから検討 |
+| 7 | 配車表のドラッグ＆ドロップでの時間変更、週・月表示、荷積み・荷降ろしの予定/実績の区別 | 要望が出た段階で別途設計。現状は閲覧専用の1日表示 |
+| 8 | 高速料金を実費コストとして扱うか（現設計は受取額に含める） | 経理の運用を確認し、必要なら V-30 と配車売上集計を変更 |
+| 9 | 車両1台に対する複数運転者の割当（専属制か都度割当か） | 現設計は日報ごとの都度指定。専属制が必要なら `vehicles.default_driver_id` を追加 |

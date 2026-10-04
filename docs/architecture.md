@@ -136,6 +136,13 @@ lib/
 │   │   └── refueling.ex               # 子エンティティ（専用 Context は作らない）
 │   ├── maintenances.ex                # 点検整備
 │   ├── maintenances/maintenance.ex
+│   ├── shippers.ex                    # 荷主マスタ
+│   ├── shippers/shipper.ex
+│   ├── dispatches.ex                  # 配車（集約ルート）
+│   ├── dispatches/
+│   │   ├── dispatch.ex
+│   │   ├── delivery.ex                # 子エンティティ（専用 Context は作らない）
+│   │   └── board.ex                   # 配車表の配置計算（純関数）
 │   ├── incidents.ex                   # 事故・ヒヤリ
 │   ├── incidents/incident.ex
 │   ├── attachments.ex                 # 添付ファイル
@@ -176,6 +183,8 @@ lib/
         ├── vehicle_live/
         ├── driver_live/
         ├── maintenance_live/
+        ├── shipper_live/
+        ├── dispatch_live/
         ├── alert_live/
         ├── report_live/
         ├── office_live/

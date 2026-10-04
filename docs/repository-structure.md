@@ -79,6 +79,8 @@ lib/core_app/
 | `drivers.ex` | `drivers/` | `driver.ex` |
 | `operation_reports.ex` | `operation_reports/` | `operation_report.ex` / `refueling.ex` |
 | `maintenances.ex` | `maintenances/` | `maintenance.ex` |
+| `shippers.ex` | `shippers/` | `shipper.ex` |
+| `dispatches.ex` | `dispatches/` | `dispatch.ex` / `delivery.ex`（配送明細。子エンティティのため専用 Context を作らない） / `board.ex`（配車表の配置計算。スキーマを持たない純関数） |
 | `incidents.ex` | `incidents/` | `incident.ex` |
 | `attachments.ex` | `attachments/` | `attachment.ex`（対象は車両・点検整備・事故ヒヤリの3種。外部キー制約は張らない） |
 | `alerts.ex` | `alerts/` | `alert_notification.ex` / `deadline.ex`（期限の値オブジェクト） / `alert_notifier.ex`（メール組み立て） |
@@ -142,6 +144,8 @@ lib/core_app_web/
 | 車両 | `vehicle_live/` | `member/`（参照専用）`manager/` |
 | 運転者 | `driver_live/` | `manager/`（管理者・運行管理者のみ） |
 | 点検整備 | `maintenance_live/` | `manager/`（管理者・運行管理者のみ） |
+| 荷主 | `shipper_live/` | `manager/`（管理者・運行管理者のみ） |
+| 配車 | `dispatch_live/` | `member/`（自分の配車の閲覧のみ）`manager/`。管理者向けと一般利用者向けで共通の詳細表示は `detail.ex`、配車表の描画は `board_components.ex`（`manager/board.ex` / `member/board.ex`） |
 | 期限アラート | `alert_live/` | `manager/`（管理者・運行管理者のみ） |
 | 集計レポート | `report_live/` | `manager/`（管理者・運行管理者のみ） |
 | 拠点 | `office_live/` | `admin/`（管理者のみ） |
